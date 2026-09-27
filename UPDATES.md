@@ -21,13 +21,19 @@ desativados porque a instalação depende de uma PS4 real.
 
 ## Publicar uma nova versão
 
-Repositório: https://github.com/h1pNoise/h1pNoise-ps4
+Repositório e releases: https://github.com/h1pNoise/h1pNoise-ps4
+
+O feed da app usa o ficheiro HTTPS estável `releases/current/update.h1p` no
+repositório; cada manifesto aponta para o PKG imutável dentro da pasta da sua
+versão. A página GitHub Releases continua a documentar cada versão e fornece o
+código-fonte da tag.
 
 1. Aumenta `APP_VERSION`, `APP_BUILD` e `APP_SFO_VERSION` em `src/version.h`, mantendo TITLE_ID e CONTENT_ID.
 2. Compila e testa o PKG PS4 normal, nunca a build shadPS4.
 3. Cria uma release GitHub com uma tag nova, por exemplo `v0.1.11`.
 4. Gera `update.h1p` com `tools/release_update.py`, usando o PKG final e o URL imutável da tag.
-5. Anexa o PKG, `update.h1p`, o código-fonte e os hashes, e marca a release como Latest.
+5. Guarda o PKG e `update.h1p` em `releases/v0.1.11/`, copia o manifesto para
+   `releases/current/update.h1p`, e cria a release/tag com as mesmas notas.
 6. Testa primeiro numa consola antes de distribuir. Nunca substituas uma tag publicada.
 
 Exemplo:
