@@ -1,0 +1,71 @@
+// Exercise the shipped UI script with DOM/network fixtures; no real downloads.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const html=fs.readFileSync(process.argv[2],'utf8'),script=fs.readFileSync(path.join(path.dirname(process.argv[2]),'app.js'),'utf8');
+const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
+let focused='',now=1000;
+function node(id=''){
+ const classes=new Set();return {id,value:'',textContent:'',disabled:false,hidden:false,files:[],children:[],dataset:{},style:{},attributes:{},handlers:{},
+ classList:{add:s=>classes.add(s),remove:s=>classes.delete(s),toggle:(s,yes)=>yes===undefined?(classes.has(s)?classes.delete(s):classes.add(s)):yes?classes.add(s):classes.delete(s),contains:s=>classes.has(s)},
+ setAttribute(k,v){this.attributes[k]=v;},focus(){focused=id;},scrollIntoView(){},select(){},remove(){},replaceChildren(){this.children=[];},append(...items){this.children.push(...items);},
+ addEventListener(k,fn){(this.handlers[k]??=[]).push(fn);},click(){return this.onclick?.();},getContext(){return {fillRect(){}}}
+ };
+}
+const nodes=Object.fromEntries(ids.map(id=>[id,node(id)]));
+const state={loaded:false,busy:false,directSupported:true,directBusy:false,directTask:-1,directPhase:'idle',directMessage:'',phase:'idle',name:'',total:0,done:0,peers:0,message:'Envia um torrent.',free:null,files:[],storagePath:'/data/pkg'};
+let networkError=false,lastPost=null,postHold=null;
+const ctx=vm.createContext({
+ document:{getElementById:id=>{assert.ok(nodes[id],id);return nodes[id];},createElement:()=>node(),body:node()},
+ URL,URLSearchParams,AbortController,location:{hash:'',origin:'http://192.168.1.10:8787',pathname:'/',search:''},history:{},navigator:{},window:{},matchMedia:()=>({matches:false}),
+ performance:{now:()=>now},setInterval(){},setTimeout(){return 1;},clearTimeout(){},
+ fetch:async(url,options)=>{
+  if(networkError)throw Error('Sem rede');
+  if(options.method==='POST'){lastPost={url,options};if(postHold)await postHold;if(url==='/api/reset')Object.assign(state,{loaded:false,busy:false,total:0,done:0,phase:'idle'});return {ok:true,json:async()=>({ok:true})};}
+  if(url==='/api/qr')return {ok:true,json:async()=>({size:21,modules:'0'.repeat(441)})};
+  return {ok:true,json:async()=>({...state})};
+ }
+});
+vm.runInContext(script,ctx);
+const fire=async(id,event,e={})=>{if(nodes[id]['on'+event])await nodes[id]['on'+event](e);for(const fn of nodes[id].handlers[event]||[])await fn(e);};
+const setURL=async value=>{nodes['pkg-url'].value=value;await fire('pkg-url','input');};
+(async()=>{
+ nodes.code.value='wrong';await nodes.connect.click();assert.match(nodes['pair-status'].textContent,/16 caracteres/);
+ nodes.code.value='0123456789abcdef';await nodes.connect.click();
+ assert.equal(nodes['pair-form'].hidden,true);assert.equal(nodes['space-value'].textContent,'Indisponível');assert.equal(nodes.percent.textContent,'—');
+ await setURL('https://example.org/demo.pkg');assert.equal(nodes['send-link'].disabled,false);
+ state.free=0;await ctx.refresh();assert.equal(nodes['space-value'].textContent,'0 B');
+ await nodes['tab-link'].click();assert.equal(nodes['panel-torrent'].hidden,true);assert.equal(nodes['tab-link'].attributes['aria-selected'],'true');
+ await fire('tab-link','keydown',{key:'Home',preventDefault(){}});assert.equal(focused,'tab-torrent');assert.equal(nodes['panel-torrent'].hidden,false);
+ const file={name:'demo.torrent',size:1024};nodes.torrent.files=[file];await fire('torrent','change');assert.equal(nodes.upload.disabled,false);
+ await nodes.upload.click();assert.equal(lastPost.options.body,file);assert.equal(lastPost.options.headers['X-Harbor-Code'],'0123456789abcdef');
+ nodes.torrent.files=[{name:'bad.txt',size:50}];await fire('torrent','change');assert.equal(nodes.upload.disabled,true);assert.match(nodes['upload-error'].textContent,/.torrent/);
+ await fire('drop','drop',{preventDefault(){},dataTransfer:{files:[file]}});assert.equal(nodes.upload.disabled,false);
+ state.directSupported=false;await ctx.refresh();assert.equal(nodes['send-link'].disabled,true);assert.match(nodes['link-status'].textContent,/PS4 real/);
+ state.directSupported=true;state.directBusy=true;state.directPhase='checking';await ctx.refresh();assert.equal(nodes.upload.disabled,true);assert.equal(nodes['send-link'].disabled,true);
+ state.directBusy=false;state.loaded=true;state.busy=true;state.name='Demo';state.phase='downloading';state.total=100000000;state.done=10000000;
+ now=2000;await ctx.refresh();now=4500;state.done+=5000000;await ctx.refresh();assert.equal(nodes.speed.textContent,'2.0 MB/s');assert.equal(nodes.pause.disabled,false);assert.equal(nodes.reset.disabled,true);
+ await nodes.pause.click();assert.equal(lastPost.url,'/api/pause');
+ state.busy=false;state.phase='paused';await ctx.refresh();assert.equal(nodes.speed.textContent,'—');assert.equal(nodes.start.textContent,'Retomar e instalar');
+ state.done=state.total;state.phase='downloaded';await ctx.refresh();assert.equal(nodes.install.disabled,false);assert.equal(nodes.start.hidden,true);
+ state.directTask=42;state.directPhase='error';state.directMessage='Pedido registado, mas não iniciou';await ctx.refresh();
+ assert.equal(nodes['link-heading'].textContent,'Requer atenção');assert.equal(nodes['link-result'].dataset.state,'error');
+ await setURL('file:///data/pkg/demo.pkg');lastPost=null;await nodes['send-link'].click();assert.equal(lastPost,null);assert.match(nodes['link-error'].textContent,/HTTP/);
+ await setURL(' https://example.org/download?token=A%2Bb&key=x ');
+ let release;postHold=new Promise(resolve=>{release=resolve;});const sending=nodes['send-link'].click();await Promise.resolve();assert.equal(nodes['send-link'].disabled,true);assert.equal(nodes.upload.disabled,true);
+ await nodes['send-link'].click();release();await sending;postHold=null;
+ assert.equal(lastPost.url,'/api/pkg-url');assert.equal(lastPost.options.body,'https://example.org/download?token=A%2Bb&key=x');
+ await nodes.reset.click();assert.equal(nodes['reset-confirm'].hidden,false);await nodes['cancel-reset'].click();assert.equal(nodes['reset-confirm'].hidden,true);
+ await nodes.reset.click();await nodes['confirm-reset'].click();assert.equal(lastPost.url,'/api/reset');assert.equal(nodes.empty.hidden,false);assert.equal(nodes.upload.disabled,true);
+ networkError=true;await ctx.refresh();for(const id of ['send-link','upload','reset','install','start'])assert.equal(nodes[id].disabled,true,id);assert.equal(nodes['pair-form'].hidden,false);
+ networkError=false;await ctx.refresh();assert.equal(nodes['pair-form'].hidden,true);assert.equal(nodes.connection.textContent,'PS4 ligada');
+ state.update={supported:false,busy:false,task:-1,available:false,ready:false,current:'0.1.10',phase:'idle'};await ctx.refresh();assert.equal(nodes['update-check'].disabled,true);
+ state.update.supported=true;await ctx.refresh();await nodes['update-check'].click();assert.equal(lastPost.url,'/api/update/check');
+ Object.assign(state.update,{available:true,version:'0.1.11',phase:'available',notes:'Melhorias'});await ctx.refresh();assert.equal(nodes['update-download'].hidden,false);assert.equal(nodes['update-install'].hidden,true);
+ await nodes['update-download'].click();assert.equal(lastPost.url,'/api/update/download');
+ Object.assign(state.update,{busy:true,phase:'downloading',done:100,size:200});await ctx.refresh();assert.equal(nodes['update-progress'].value,50);for(const id of ['update-check','update-download','update-install','upload','send-link'])assert.equal(nodes[id].disabled,true,id);
+ Object.assign(state.update,{busy:false,ready:true,phase:'ready',done:200});await ctx.refresh();assert.equal(nodes['update-download'].hidden,true);assert.equal(nodes['update-install'].hidden,false);
+ lastPost=null;await nodes['update-install'].click();assert.equal(lastPost,null);assert.equal(nodes['update-confirm'].hidden,false);await nodes['update-cancel'].click();assert.equal(nodes['update-confirm'].hidden,true);
+ await nodes['update-install'].click();postHold=new Promise(resolve=>{release=resolve;});const updating=nodes['update-confirm-install'].click();await Promise.resolve();assert.equal(nodes['update-confirm-install'].disabled,true);await nodes['update-confirm-install'].click();release();await updating;postHold=null;assert.equal(lastPost.url,'/api/update/install');assert.equal(nodes['update-confirm'].hidden,true);
+ state.update.task=42;state.update.phase='queued';await ctx.refresh();for(const id of ['update-check','update-install','send-link','upload','reset'])assert.equal(nodes[id].disabled,true,id);
+ console.log('UI checks passed: pairing/reconnect, storage, tabs, torrent/link controls, progress, reset, update capability/availability/progress, confirmation and duplicate guards.');
+})().catch(e=>{console.error(e);process.exitCode=1;});
+
