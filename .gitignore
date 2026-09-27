@@ -1,0 +1,14 @@
+build/
+build-shadps4/
+harbor-data/
+*.pem
+*.key
+*.pkg
+*.torrent
+*.part
+*.log
+__pycache__/
+.env
+.env.*
+*release-private*/
+
