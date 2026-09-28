@@ -1,5 +1,7 @@
 import SwiftUI
 import WebKit
+import VisionKit
+import AVFoundation
 
 @main
 struct NoiseApp: App {
@@ -10,6 +12,8 @@ struct ConnectionView: View {
     @AppStorage("consoleAddress") private var address = ""
     @State private var destination: URL?
     @State private var error = ""
+    @State private var code = ""
+    @State private var scanning = false
     var body: some View {
         NavigationStack {
             Group {
@@ -30,6 +34,9 @@ struct ConnectionView: View {
                             TextField("http://192.168.1.100:8787", text: $address)
                                 .keyboardType(.URL).textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
+                            TextField("Código apresentado na consola", text: $code)
+                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            Button("Ler QR da consola", systemImage: "qrcode.viewfinder", action: scan)
                             Button("Ligar à consola", action: connect)
                             if !error.isEmpty { Text(error).foregroundStyle(.red) }
                         }
@@ -42,6 +49,23 @@ struct ConnectionView: View {
             }
             .navigationTitle(destination == nil ? "A tua PS4" : "h1pNoise")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $scanning) {
+                NavigationStack {
+                    QRScanner { value in
+                        scanning = false
+                        address = value
+                        code = ""
+                        connect()
+                    } onError: { message in
+                        scanning = false
+                        error = message
+                    }
+                    .ignoresSafeArea(edges: .bottom)
+                    .navigationTitle("Aponta ao QR da PS4")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { Button("Cancelar") { scanning = false } }
+                }
+            }
             .toolbar {
                 if destination != nil {
                     ToolbarItem(placement: .topBarLeading) {
@@ -51,17 +75,40 @@ struct ConnectionView: View {
             }
         }.tint(.mint).preferredColorScheme(.dark)
     }
+    private func scan() {
+        guard DataScannerViewController.isSupported else {
+            error = "Este iPhone não suporta esta leitura de QR. Introduz o IP e o código manualmente."
+            return
+        }
+        AVCaptureDevice.requestAccess(for: .video) { allowed in
+            DispatchQueue.main.async {
+                if allowed && DataScannerViewController.isAvailable { scanning = true }
+                else { error = "Permite o acesso à Câmara nas Definições do iPhone ou introduz o IP e o código manualmente." }
+            }
+        }
+    }
     private func connect() {
         var value = address.trimmingCharacters(in: .whitespacesAndNewlines)
         if !value.contains("://") { value = "http://" + value }
         guard var parts = URLComponents(string: value), parts.scheme == "http",
               parts.user == nil, parts.password == nil, let host = parts.host,
-              isPrivateIPv4(host), let port = parts.port, (1...65535).contains(port),
+              isPrivateIPv4(host), (1...65535).contains(parts.port ?? 8787),
               parts.query == nil, parts.path == "" || parts.path == "/" else {
             error = "Introduz o endereço IP local e a porta apresentados na PS4."
             return
         }
+        let fragment = URLComponents(string: "http://local/?" + (parts.fragment ?? ""))
+        let qrCode = fragment?.queryItems?.first(where: { $0.name == "code" })?.value
+        let pairingCode = (qrCode ?? code).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pairingCode.isEmpty else {
+            error = "Introduz o código apresentado na PS4 ou lê o QR da consola."
+            return
+        }
+        parts.port = parts.port ?? 8787
         parts.path = "/"
+        var pairing = URLComponents()
+        pairing.queryItems = [URLQueryItem(name: "code", value: pairingCode)]
+        parts.percentEncodedFragment = pairing.percentEncodedQuery
         destination = parts.url
         parts.fragment = nil
         address = parts.string ?? ""
@@ -74,6 +121,43 @@ struct ConnectionView: View {
               values.allSatisfy({ (0...255).contains($0) }) else { return false }
         return values[0] == 10 || (values[0] == 192 && values[1] == 168)
             || (values[0] == 172 && (16...31).contains(values[1]))
+    }
+}
+
+struct QRScanner: UIViewControllerRepresentable {
+    let onScan: (String) -> Void
+    let onError: (String) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeUIViewController(context: Context) -> DataScannerViewController {
+        let scanner = DataScannerViewController(recognizedDataTypes: [.barcode(symbologies: [.qr])],
+            qualityLevel: .balanced, recognizesMultipleItems: false,
+            isGuidanceEnabled: true, isHighlightingEnabled: true)
+        scanner.delegate = context.coordinator
+        do { try scanner.startScanning() }
+        catch { DispatchQueue.main.async { onError("Não foi possível abrir a câmara. Introduz o IP e o código manualmente.") } }
+        return scanner
+    }
+    func updateUIViewController(_ controller: DataScannerViewController, context: Context) {}
+    static func dismantleUIViewController(_ controller: DataScannerViewController, coordinator: Coordinator) {
+        controller.stopScanning()
+    }
+    class Coordinator: NSObject, DataScannerViewControllerDelegate {
+        let parent: QRScanner
+        var delivered = false
+        init(parent: QRScanner) { self.parent = parent }
+        func dataScanner(_ scanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+            for item in addedItems {
+                if case .barcode(let barcode) = item, let value = barcode.payloadStringValue, !delivered {
+                    delivered = true
+                    scanner.stopScanning()
+                    parent.onScan(value)
+                    return
+                }
+            }
+        }
+        func dataScanner(_ scanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
+            parent.onError("A câmara ficou indisponível. Tenta novamente ou introduz o IP e o código.")
+        }
     }
 }
 
