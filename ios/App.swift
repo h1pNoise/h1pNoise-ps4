@@ -18,8 +18,12 @@ struct ConnectionView: View {
                 } else {
                     Form {
                         Section {
-                            Label("h1pNoise", systemImage: "gamecontroller.fill")
-                                .font(.largeTitle.bold())
+                            HStack(spacing: 16) {
+                                Image(uiImage: UIImage(named: "Brand.png") ?? UIImage())
+                                    .resizable().scaledToFit().frame(width: 80, height: 80)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                                Text("h1pNoise").font(.largeTitle.bold())
+                            }
                             Text("Controla as transferências da tua PS4 pelo iPhone.")
                         }
                         Section("Endereço apresentado na consola") {
@@ -101,4 +105,3 @@ struct ConsolePage: UIViewRepresentable {
         }
     }
 }
-
