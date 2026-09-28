@@ -28,4 +28,3 @@ PLIST
 plutil -lint "$APP/Info.plist"
 cd ios-output
 zip -qr h1pNoise-iPhone-unsigned.ipa Payload
-
