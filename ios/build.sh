@@ -18,8 +18,8 @@ cat > "$APP/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>h1pNoise</string>
 <key>CFBundleDisplayName</key><string>h1pNoise</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.1</string>
-<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleShortVersionString</key><string>0.1.2</string>
+<key>CFBundleVersion</key><string>3</string>
 <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon120</string><string>Icon180</string></array><key>UIPrerenderedIcon</key><false/></dict></dict>
 <key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>Icon152</string><string>Icon167</string></array><key>UIPrerenderedIcon</key><false/></dict></dict>
 <key>MinimumOSVersion</key><string>17.0</string>
@@ -27,6 +27,7 @@ cat > "$APP/Info.plist" <<'PLIST'
 <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
 <key>UILaunchScreen</key><dict/>
 <key>NSLocalNetworkUsageDescription</key><string>Ligar à h1pNoise na tua PS4 para controlar as transferências.</string>
+<key>NSCameraUsageDescription</key><string>Ler o QR apresentado na PS4 para preencher o endereço e o código de ligação.</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 </dict></plist>
