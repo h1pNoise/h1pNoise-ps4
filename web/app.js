@@ -14,7 +14,7 @@ async function api(path,body,post=false){
  try{
   const r=await fetch('/api/'+path,{method:post?'POST':'GET',headers:{'X-Harbor-Code':code,...(body?{'Content-Type':'application/octet-stream'}:{})},body:body||undefined,signal:controller.signal});
   let d;try{d=await r.json();}catch(_){throw Error('A consola enviou uma resposta inválida. Volta a ligar.');}
-  if(!r.ok)throw Error(d.error||'Não foi possível concluir o pedido.');return d;
+  if(!r.ok){const error=Error(d.error||'Não foi possível concluir o pedido.');error.status=r.status;if(r.status===401||r.status===429)code='';throw error;}return d;
  }catch(e){if(e.name==='AbortError')throw Error('A consola demorou a responder. Confirma o estado antes de repetir o pedido.');throw e;}finally{clearTimeout(timer);}
 }
 function selectMode(mode,focus=false){
@@ -88,7 +88,7 @@ function render(d){
  $('install').hidden=!complete||d.busy||d.phase==='installed';
  text('start',d.phase==='paused'?'Retomar e instalar':'Descarregar e instalar');text('download',d.phase==='paused'?'Só retomar':'Só descarregar');
  const unknown=d.free===null||d.free===undefined;text('space-value',unknown?'Indisponível':size(d.free));$('space-value').classList.toggle('unknown',unknown);
- text('space',unknown?(d.allowUnknownSpace?'O emulador não mediu o espaço. Confirma no PC.':'Não foi possível medir o espaço disponível.'):'A instalação precisa de espaço adicional ao download.');
+ text('space',unknown?(d.allowUnknownSpace?'Medição indisponível. Podes descarregar; confirma o espaço no dispositivo.':'Não foi possível medir o espaço disponível.'):'A instalação precisa de espaço adicional ao download.');
  text('storage-path','Destino: '+(d.storagePath||'/data/pkg'));
  text('mobile-space',(unknown?'Espaço livre: medição indisponível.':'Espaço livre: '+size(d.free)+'.')+' Destino: '+(d.storagePath||'/data/pkg'));
  const dp=d.directPhase||'idle';$('link-result').dataset.state=dp;
@@ -116,7 +116,7 @@ async function refresh(){
 }
 $('connect').onclick=async()=>{
  const entered=$('code').value.trim().toLowerCase();
- if(!/^[0-9a-f]{16}$/.test(entered)){text('pair-status','Introduz os 16 caracteres que aparecem na televisão.');return;}
+ if(!/^[0-9]{4}$/.test(entered)){text('pair-status','Introduz os 4 números que aparecem na televisão.');return;}
  if(polling)return;code=entered;connected=false;previous=null;editingCode=false;$('connect').disabled=true;controls();text('pair-status','A ligar à consola…');
  await refresh();
  if(connected){$('pair-form').hidden=true;text('pair-status','Ligação estabelecida.');toast('Ligado ao dispositivo.');await showQR();}
@@ -160,6 +160,6 @@ $('update-install').onclick=()=>{if(!$('update-install').disabled){$('update-con
 $('update-cancel').onclick=()=>{$('update-confirm').hidden=true;};
 $('update-confirm-install').onclick=async()=>{if(!$('update-confirm-install').disabled&&await action('update/install',null,'update-error'))$('update-confirm').hidden=true;};
 const pairingCode=new URLSearchParams(location.hash.slice(1)).get('code');
-if(pairingCode&&/^[0-9a-f]{16}$/.test(pairingCode)){$('code').value=pairingCode;history.replaceState(null,'',location.pathname+location.search);$('connect').onclick();}
+if(pairingCode&&/^[0-9]{4}$/.test(pairingCode)){$('code').value=pairingCode;history.replaceState(null,'',location.pathname+location.search);$('connect').onclick();}
 setInterval(refresh,2500);
 

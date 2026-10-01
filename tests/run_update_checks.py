@@ -25,7 +25,7 @@ static const unsigned char UPDATE_PUBLIC_KEY[32]={'''+','.join(str(b) for b in p
 #define APP_TITLE_ID "HBRW00001"
 #define APP_CONTENT_ID "IV0000-HBRW00001_00-HARBORPS40000000"
 ''')
-sources=['updater.c','update_http.c','update_platform.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
+sources=['updater.c','update_http.c','update_platform.c','ps4_user.c','ps4_bgft.c','installer_access.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
 cmd=[a.llvm/'clang.exe','--target=wasm64','-O1','-nostdlib','-D__ORBIS__','-isystem',a.sdk/'include','-include',config,'-Wl,--no-entry','-Wl,--export-all','-Wl,--export-table','-Wl,--allow-undefined','-Wl,-z,stack-size=262144',*[root/'src'/s for s in sources],root/'tests/updater_fixture.c','-o',build/'updater-test.wasm']
 subprocess.run([str(x) for x in cmd],check=True)
 try:subprocess.run([str(a.node),str(root/'tests/updater_wasm.js'),str(build/'updater-test.wasm'),str(a.pkg),str(test_key)],check=True)

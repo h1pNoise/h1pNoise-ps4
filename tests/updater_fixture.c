@@ -1,6 +1,7 @@
 /* Test accessors only. Production sources are linked unchanged (PS4, 64-bit ABI). */
 #include "../src/app.h"
 App app;
+void link_stage(const char *stage,int result){(void)stage;(void)result;}
 void fixture_reset(void){memset(&app,0,sizeof(app));strcpy(app.root,"/data/pkg");app.update.task=-1;}
 void fixture_busy(int busy){app.busy=busy;}
 int fixture_state(int field){switch(field){case 0:return app.update.busy;case 1:return app.update.available;case 2:return app.update.ready;case 3:return app.update.task;default:return -9;}}

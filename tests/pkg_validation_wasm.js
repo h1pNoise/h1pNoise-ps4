@@ -1,9 +1,10 @@
-const fs=require('node:fs'),assert=require('node:assert/strict');
+const fs=require('node:fs'),assert=require('node:assert/strict'),{urlToHttpOptions}=require('node:url');
 (async()=>{
  let instance;const mem=()=>new Uint8Array(instance.exports.memory.buffer);
  const str=p=>{let e=p;while(mem()[e])e++;return Buffer.from(mem().subarray(p,e)).toString();};
  const write=(p,s)=>{mem().set(Buffer.from(s+'\0'),p);};
  const imports={env:{
+  strlen:p=>Buffer.byteLength(str(p)),
   memset:(p,v,n)=>{mem().fill(v,p,p+n);return p;},
   memcpy:(d,s,n)=>{mem().copyWithin(d,s,s+n);return d;},
   memcmp:(a,b,n)=>{for(let i=0;i<n;i++)if(mem()[a+i]!==mem()[b+i])return mem()[a+i]-mem()[b+i];return 0;},
@@ -16,6 +17,21 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
  const valid=(s,expect)=>{write(base,s);assert.equal(e.pkg_url_valid(base,Buffer.byteLength(s),err,512),expect,s);checks++;};
  for(const s of ['http://192.168.1.50:8080/app.pkg','https://example.org/download?token=AbC%20d&key=abc','https://example.org/app.pkg','http://example.org:65535/a'])valid(s,0);
  for(const s of ['', 'ftp://example.org/a.pkg','file:///data/a.pkg','https:///x','https://u:p@example.org/app.pkg','https://example.org:0/x','https://example.org:65536/x','https://example.org:99999999999999999/x','https://example.org:/x','https://example.org/a\r\nX: y','https://example.org/a\0.pkg','https://example.org/a b','https://example.org/a#x','https://example.org/a%','https://example.org/a%zz','https://example.org\\x','https://example.org/'+ 'x'.repeat(2048)])valid(s,-1);
+ const bgft=(s,expect=0,capacity=2048)=>{write(base,s);write(out,'stale');assert.equal(e.pkg_bgft_url(base,out,capacity,err,512),expect,s);checks++;return str(out);};
+ for(const s of ['https://example.org/app.pkg','http://example.org/app.PKG','https://example.org/a.pkg?token=A%2Bb&expires=1791011577','https://example.org/download?token=A%2Fb%3D+z&node=pt','http://192.168.1.50:8787/?file=%5Bdemo%5D.pkg&key=x']){
+  const prepared=bgft(s),original=new URL(s),system=new URL(prepared);
+  assert.ok(/\.(pkg|PKG)$/.test(prepared));
+  assert.equal(system.origin,original.origin);assert.equal(system.pathname,original.pathname);assert.equal(system.search,original.search);
+  assert.equal(urlToHttpOptions(system).path,urlToHttpOptions(original).path,'Signed HTTP request changed');
+  if(s.endsWith('.pkg')||s.endsWith('.PKG'))assert.equal(prepared,s);
+  else assert.equal(prepared,s+'#content.pkg');
+ }
+ const prefix='https://example.org/';
+ const maximum=prefix+'x'.repeat(2047-prefix.length-12);
+ assert.equal(bgft(maximum).length,2047);
+ for(const s of [maximum+'x','https://example.org/a#injected.pkg','https://u:p@example.org/a'])assert.equal(bgft(s,-1),'');
+ assert.equal(bgft('https://example.org/a',-1,8),'');
+ const cleanMaximum=prefix+'x'.repeat(2047-prefix.length-4)+'.pkg';assert.equal(bgft(cleanMaximum),cleanMaximum);
  const real=fs.readFileSync(process.argv[3]).subarray(0,8192);mem().set(real,base);
  assert.equal(e.pkg_header_read(base,8192,out,err,512),0,str(err));checks++;
  assert.equal(str(out),'IV0000-HBRW00001_00-HARBORPS40000000');

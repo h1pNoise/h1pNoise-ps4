@@ -15,7 +15,7 @@ int main(void){
  assert(storage_from_blocks(4096,100,101,&out)!=0);
  assert(storage_from_blocks(UINT64_MAX,2,1,&out)!=0);
  query_error=-1;free_value=0;
-#ifdef HARBOR_SHADPS4
+#if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
  assert(storage_check("/data/pkg",100,error,sizeof(error))==0);
  assert(error[0]==0);
 #else

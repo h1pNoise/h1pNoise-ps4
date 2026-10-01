@@ -25,16 +25,46 @@ int ps4_resolve(const char *host,struct in_addr *out){if(net_pool<0)return -1;in
 typedef struct{uint32_t bits;int32_t error;uint64_t length,transferred,length_total,transferred_total;uint32_t index,total,seconds,total_seconds;int32_t preparing,copy;} Progress64;
 _Static_assert(sizeof(Progress64)==64,"BGFT progress ABI");
 #ifndef HARBOR_SHADPS4
+#include "installer_access.h"
+#include "ps4_bgft.h"
+extern void link_stage(const char *stage,int result);
 /* Callers serialize installer operations using app.busy/direct_busy. */
-int ps4_installer_ready(char *error,size_t cap){
+static int installer_init(char *error,size_t cap){
  static int initialized=0;static OrbisBgftInitParams init;int rc;
  if(!initialized){
-  sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL);sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_BGFT);
+  link_stage("carregar AppInstUtil",0);
+  rc=sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL);
+  link_stage("resultado AppInstUtil",rc);
+  if(rc<0){
+   errno=0;int module_fd=open("/system/common/lib/libSceAppInstUtil.sprx",O_RDONLY);
+   link_stage("acesso ao ficheiro AppInstUtil",module_fd<0?-errno:0);
+   if(module_fd>=0){unsigned char magic[4];int bytes=read(module_fd,magic,sizeof(magic));
+    link_stage("leitura ficheiro AppInstUtil",bytes);close(module_fd);}
+   link_stage("carregar AppInstUtil pelo caminho",rc);
+   rc=(int32_t)sceKernelLoadStartModule("/system/common/lib/libSceAppInstUtil.sprx",0,NULL,0,NULL,NULL);
+   link_stage("resultado caminho AppInstUtil",rc);
+   if(rc<0){snprintf(error,cap,"AppInstUtil nao carregou: 0x%08X. Acesso ao ficheiro: %s. Envia o link-debug.log.",(unsigned)rc,module_fd<0?"indisponivel para a app":"confirmado");return -1;}
+  }
+  link_stage("carregar BGFT",0);
+  rc=sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_BGFT);
+  link_stage("resultado BGFT",rc);
+  if(rc<0){
+   link_stage("carregar BGFT pelo caminho",rc);
+   rc=(int32_t)sceKernelLoadStartModule("/system/common/lib/libSceBgft.sprx",0,NULL,0,NULL,NULL);
+   link_stage("resultado caminho BGFT",rc);
+   if(rc<0){snprintf(error,cap,"BGFT nao carregou pelo caminho do sistema: 0x%08X.",(unsigned)rc);return -1;}
+  }
+  link_stage("inicializar AppInstUtil",0);
   rc=sceAppInstUtilInitialize();if(rc){snprintf(error,cap,"AppInstUtil indisponivel: 0x%08X.",(unsigned)rc);return -1;}
+  link_stage("reservar memoria BGFT",rc);
   init.heapSize=1024*1024;init.heap=calloc(1,init.heapSize);if(!init.heap){snprintf(error,cap,"Sem memoria para o instalador.");return -1;}
-  rc=sceBgftServiceIntInit(&init);if(rc){free(init.heap);init.heap=NULL;snprintf(error,cap,"BGFT indisponivel: 0x%08X.",(unsigned)rc);return -1;}initialized=1;
+  link_stage("inicializar BGFT",0);
+  rc=sceBgftServiceIntInit(&init);link_stage("resultado inicializacao BGFT",rc);if(rc){free(init.heap);init.heap=NULL;snprintf(error,cap,"BGFT indisponivel: 0x%08X.",(unsigned)rc);return -1;}initialized=1;
  }
  return 0;
+}
+int ps4_installer_ready(char *error,size_t cap){
+ return installer_with_access(installer_init,error,cap);
 }
 #endif
 int install_pkg(const char *path,const char *name,char *error,size_t cap,void(*progress)(uint64_t,uint64_t)){
@@ -57,8 +87,7 @@ int install_pkg(const char *path,const char *name,char *error,size_t cap,void(*p
  if(storage_check(app.root,sz+64*1024*1024ULL,error,cap))return -1;
  char storage[800];snprintf(storage,sizeof(storage),"/user%s",path);OrbisBgftDownloadParamEx params;memset(&params,0,sizeof(params));
  params.params.entitlementType=5;params.params.id=cid;params.params.contentUrl=storage;params.params.contentName=name;params.params.iconPath="";params.params.playgoScenarioId="0";params.params.option=ORBIS_BGFT_TASK_OPT_NONE;
- int task=-1;rc=sceBgftServiceIntDownloadRegisterTaskByStorageEx(&params,&task);if(rc){snprintf(error,cap,"Registo da instalacao recusado: 0x%08X. Os ficheiros continuam guardados.",(unsigned)rc);return -1;}
- rc=sceBgftServiceDownloadStartTask(task);if(rc){snprintf(error,cap,"Nao foi possivel iniciar a instalacao: 0x%08X.",(unsigned)rc);return -1;}
+ int task=-1;if(ps4_bgft_submit(&params,BGFT_SUBMIT_STORAGE,&task,error,cap))return -1;
  time_t start=time(NULL);for(;;){Progress64 p;memset(&p,0,sizeof(p));rc=sceBgftServiceDownloadGetProgress(task,(OrbisBgftTaskProgress*)&p);
   if(rc||p.error){snprintf(error,cap,"Erro na instalacao: 0x%08X. Consulta tambem as Notificacoes da PS4.",(unsigned)(rc?rc:p.error));return -1;}
   progress(p.transferred,p.length);if(p.length&&p.transferred>=p.length)return 0;

@@ -42,7 +42,9 @@ def main():
     if not a.sdk or not a.llvm: p.error('Set --sdk and --llvm (or OO_PS4_TOOLCHAIN and LLVM_BIN).')
     sdk=Path(a.sdk).resolve();llvm=Path(a.llvm).resolve()
     os.environ['OO_PS4_TOOLCHAIN']=str(sdk)
-    sources.extend([ROOT/'src/ps4.c',ROOT/'src/ps4_remote.c',ROOT/'src/display.c']);objects=[]
+    sources.extend([ROOT/'src/ps4.c',ROOT/'src/ps4_remote.c',ROOT/'src/ps4_storage.c',ROOT/'src/display.c']);objects=[]
+    if not a.shadps4:
+        sources.extend([ROOT/'src/ps4_user.c',ROOT/'src/ps4_bgft.c',ROOT/'src/installer_access.c',ROOT/'src/vendor/libjbc/jailbreak.c',ROOT/'src/vendor/libjbc/kernelrw.c'])
     for source in sources:
         obj=build/(source.stem+'.o');objects.append(obj)
         defines=['-D__ORBIS__']+(['-DHARBOR_SHADPS4'] if a.shadps4 else [])

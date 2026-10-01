@@ -3,7 +3,7 @@
 #include "web.h"
 #include "pairing.h"
 #include "version.h"
-#ifdef HARBOR_SHADPS4
+#if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
 #define STORAGE_UNCHECKED "true"
 #else
 #define STORAGE_UNCHECKED "false"
@@ -52,7 +52,14 @@ static void handle(Sock s){
  int oc=header(head,"Origin",origin,sizeof(origin));char own[200];snprintf(own,sizeof(own),"http://%s",expected);if(oc<0||(oc&&strcmp(origin,own))){fail(s,403,"Origem recusada.");return;}
  if(!strcmp(method,"GET")&&!strcmp(path,"/")){reply(s,200,"text/html; charset=utf-8",web_html,sizeof(web_html)-1);return;}
  if(!strcmp(method,"GET")&&!strcmp(path,"/icon.png")){reply(s,200,"image/png",web_icon,sizeof(web_icon));return;}
- if(header(head,"X-Harbor-Code",token,sizeof(token))!=1||strcmp(token,app.pin)){fail(s,401,"Introduz o codigo apresentado na PS4.");return;}
+ /* The server handles requests sequentially. Bound guesses per minute. */
+ static time_t failed_at=0;static unsigned failures=0;time_t now=time(NULL);
+ if(failures&&now-failed_at>=60)failures=0;
+ if(failures>=5){fail(s,429,"Demasiadas tentativas. Aguarda 60 segundos e usa o codigo da consola.");return;}
+ if(header(head,"X-Harbor-Code",token,sizeof(token))!=1||strcmp(token,app.pin)){
+  if(!failures)failed_at=now;failures++;
+  fail(s,401,"Introduz os 4 numeros apresentados na PS4.");return;
+ }
  if(!strcmp(method,"GET")&&!strcmp(path,"/api/status")){status_response(s);return;}
  if(!strcmp(method,"GET")&&!strcmp(path,"/api/qr")){qr_response(s);return;}
  if(strcmp(method,"POST")){fail(s,405,"Metodo nao permitido.");return;}

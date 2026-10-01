@@ -1,4 +1,23 @@
-# h1pNoise — protótipo PS4 0.1.10
+# h1pNoise — PS4 0.1.24
+
+## Atualização 0.1.24 — espaço livre do disco interno
+
+A leitura do espaço livre foi confirmada pelo utilizador numa PS4 13.50 com
+GoldHEN. Corrige a recusa de permissão que deixava a app a mostrar
+«Medição indisponível». Os torrents continuam em `/data/pkg`.
+
+Inclui os ajustes do instalador e de links PKG das versões anteriores, código
+de emparelhamento de quatro números e interface no telemóvel e na televisão.
+A consulta ao GitHub continua assinada com a chave pública original: versões
+compatíveis mostram o aviso ao abrir a app. A instalação requer confirmação
+em **Atualizações da app**; não é silenciosa. Consulte [UPDATES.md](UPDATES.md)
+e as [notas da versão](RELEASE_NOTES_0.1.24.md).
+
+Build experimental para PS4 real. O download de links e a medição de espaço
+foram confirmados pelo utilizador; o processo completo de substituir a app
+através do atualizador ainda precisa de confirmação na consola.
+
+## Histórico
 
 ## Atualização 0.1.10 — verificações e atualizações
 

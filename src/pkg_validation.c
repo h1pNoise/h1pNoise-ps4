@@ -16,6 +16,22 @@ int pkg_url_valid(const char *url,size_t len,char *error,size_t cap){
  for(size_t i=end;i<len;i++)if(url[i]=='%'){if(i+2>=len||!isxdigit((unsigned char)url[i+1])||!isxdigit((unsigned char)url[i+2]))return reject(error,cap,"Codificacao invalida no link.");i+=2;}
  return 0;
 }
+int pkg_bgft_url(const char *url,char *out,size_t out_cap,char *error,size_t cap){
+ if(out&&out_cap)out[0]=0;
+ if(!url)return reject(error,cap,"O link PKG e invalido.");
+ size_t len=strlen(url);
+ if(pkg_url_valid(url,len,error,cap))return -1;
+ /* BGFT checks the end of the URL, even when a query follows the PKG path.
+    A fragment supplies the extension without changing the HTTP path/query or
+    invalidating signed links. Keep the original URL for header verification.
+    Reference: ItsJokerZz/FPKGi issue 12, comment 2700065495. */
+ const char suffix[]="#content.pkg";
+ size_t extra=(len>=4&&(!memcmp(url+len-4,".pkg",4)||!memcmp(url+len-4,".PKG",4)))?0:sizeof(suffix)-1;
+ if(!out||len+extra>=out_cap||len+extra>=PKG_URL_CAP)return reject(error,cap,"O link e demasiado longo para enviar ao sistema da PS4. Usa um link direto mais curto.");
+ memcpy(out,url,len);
+ if(extra)memcpy(out+len,suffix,extra);
+ out[len+extra]=0;return 0;
+}
 static uint32_t read32(const unsigned char *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
 int pkg_header_read(const unsigned char *data,size_t len,RemotePkg *pkg,char *error,size_t cap){
  memset(pkg,0,sizeof(*pkg));

@@ -7,7 +7,10 @@ int main(int argc,char **argv){
 #else
  (void)argc;(void)argv;strcpy(app.root,"/data/pkg");signal(SIGPIPE,SIG_IGN);
 #endif
- make_dir(app.root);int rc=platform_init(app.ip);unsigned char secret[8];if(random_bytes(secret,sizeof(secret)))return 1;for(int i=0;i<8;i++)sprintf(app.pin+2*i,"%02x",secret[i]);
+ make_dir(app.root);int rc=platform_init(app.ip);uint16_t secret;
+ /* Rejection sampling avoids favouring some four-digit codes. */
+ do{if(random_bytes(&secret,sizeof(secret)))return 1;}while(secret>=60000);
+ snprintf(app.pin,sizeof(app.pin),"%04u",(unsigned)(secret%10000));
  memcpy(app.peer_id,"-HB0100-",8);if(random_bytes(app.peer_id+8,12))return 1;
  set_status("idle",rc?"Liga a PS4 a rede e volta a abrir a aplicacao.":"Envia um torrent pelo telemovel para comecar.");
  char current[700];snprintf(current,sizeof(current),"%s/current.txt",app.root);FILE *f=fopen(current,"rb");char hash[41]={0};if(f){size_t n=fread(hash,1,40,f);fclose(f);int good=n==40;for(int i=0;i<40&&good;i++)if(!((hash[i]>='0'&&hash[i]<='9')||(hash[i]>='a'&&hash[i]<='f')))good=0;

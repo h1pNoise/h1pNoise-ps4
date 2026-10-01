@@ -15,16 +15,7 @@ int install_pkg(const char *p,const char *name,char *e,size_t cap,void(*cb)(uint
 void mutex_init(Mutex *m){pthread_mutex_init(m,NULL);}void lock(Mutex *m){pthread_mutex_lock(m);}void unlock(Mutex *m){pthread_mutex_unlock(m);}
 int thread_start(Thread *t,void *(*fn)(void*),void *arg){return pthread_create(t,NULL,fn,arg);}void thread_join(Thread t){pthread_join(t,NULL);}void sleep_ms(int ms){usleep(ms*1000);}
 #ifdef __ORBIS__
-#include <sys/statfs.h>
-int free_bytes(const char *p,uint64_t *available){
- /* OpenOrbis 0.5.3 statvfs() does not copy the filesystem fields out;
-    statfs() also loses the fstatfs return value. Use fstatfs directly.
-    Extra room accommodates the native FreeBSD structure's reserved tail. */
- union {struct statfs info;unsigned char room[4096];} v={0};
- *available=0;int fd=open(p,O_RDONLY);if(fd<0)return -1;
- int rc=fstatfs(fd,&v.info);close(fd);if(rc)return -1;
- return storage_from_blocks(v.info.f_bsize,v.info.f_blocks,v.info.f_bavail,available);
-}
+/* PS4 filesystem queries are implemented separately in ps4_storage.c. */
 #else
 int free_bytes(const char *p,uint64_t *available){
  struct statvfs v={0};*available=0;if(statvfs(p,&v)||!v.f_frsize||v.f_blocks>UINT64_MAX/v.f_frsize||v.f_bavail>v.f_blocks)return -1;

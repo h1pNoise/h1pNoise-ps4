@@ -23,7 +23,10 @@ int begin_remote_pkg(const char *url,size_t len,char *error,size_t cap){
  char *copy=malloc(len+1);if(!copy){snprintf(error,cap,"Sem memoria para verificar o link.");return -1;}memcpy(copy,url,len);copy[len]=0;
  lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);free(copy);snprintf(error,cap,"Aguarda ou pausa a operacao atual antes de enviar um link.");return -1;}
  app.direct_busy=1;app.direct_task=-1;strcpy(app.direct_phase,"checking");snprintf(app.direct_message,sizeof(app.direct_message),"A verificar o PKG do link. Mantem a aplicacao aberta.");unlock(&app.mu);
- Thread t;if(thread_start(&t,remote_worker,copy)){free(copy);lock(&app.mu);app.direct_busy=0;strcpy(app.direct_phase,"error");snprintf(app.direct_message,sizeof(app.direct_message),"Nao foi possivel verificar o link.");unlock(&app.mu);snprintf(error,cap,"Nao foi possivel iniciar a verificacao.");return -1;}pthread_detach(t);return 0;
+ /* HTTPS libraries need more stack than a small homebrew worker. */
+ Thread t;pthread_attr_t attributes;int created=pthread_attr_init(&attributes);
+ if(!created){created=pthread_attr_setstacksize(&attributes,1024*1024);if(!created)created=pthread_create(&t,&attributes,remote_worker,copy);pthread_attr_destroy(&attributes);}
+ if(created){free(copy);lock(&app.mu);app.direct_busy=0;strcpy(app.direct_phase,"error");snprintf(app.direct_message,sizeof(app.direct_message),"Nao foi possivel verificar o link.");unlock(&app.mu);snprintf(error,cap,"Nao foi possivel iniciar a verificacao.");return -1;}pthread_detach(t);return 0;
 #else
  return -1;
 #endif

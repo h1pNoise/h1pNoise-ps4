@@ -10,8 +10,8 @@ int storage_from_blocks(uint64_t block_size,uint64_t total_blocks,int64_t availa
 int storage_check(const char *path,uint64_t required,char *error,size_t cap){
  uint64_t available;
  if(free_bytes(path,&available)){
-#ifdef HARBOR_SHADPS4
-  /* Emulator-only: fstatfs may be a stub. Do not invent a capacity.
+#if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
+  /* A failed query is unknown capacity, not a full disk.
      Actual write/flush failures still stop the download in data_io(). */
   if(cap)error[0]=0;
   return 0;

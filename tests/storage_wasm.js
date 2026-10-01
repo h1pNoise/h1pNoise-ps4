@@ -2,10 +2,15 @@
 const fs=require('node:fs');
 const assert=require('node:assert/strict');
 (async()=>{
- for(const [file,emulator] of [[process.argv[2],false],[process.argv[3],true]]){
+ for(const [file,emulator] of [[process.argv[2],true],[process.argv[3],true],[process.argv[4],false]]){
   let instance,queryError=0,free=0n;
   const text=ptr=>{const b=new Uint8Array(instance.exports.memory.buffer);let end=ptr;while(b[end])end++;return Buffer.from(b.slice(ptr,end)).toString();};
   const imports={env:{
+   __multi3:(ptr,aLow,aHigh,bLow,bHigh)=>{
+    const a=BigInt.asUintN(64,aLow)|(BigInt.asUintN(64,aHigh)<<64n),b=BigInt.asUintN(64,bLow)|(BigInt.asUintN(64,bHigh)<<64n);
+    const product=BigInt.asUintN(128,a*b),v=new DataView(instance.exports.memory.buffer);
+    v.setBigUint64(Number(ptr),BigInt.asUintN(64,product),true);v.setBigUint64(Number(ptr)+8,product>>64n,true);
+   },
    free_bytes:(_path,out)=>{new DataView(instance.exports.memory.buffer).setBigUint64(out,free,true);return queryError;},
    snprintf:(out,cap,format)=>{const value=text(format);const b=Buffer.from(value);const target=new Uint8Array(instance.exports.memory.buffer);if(cap){target.set(b.subarray(0,cap-1),out);target[out+Math.min(b.length,cap-1)]=0;}return b.length;}
   }};
@@ -27,6 +32,6 @@ const assert=require('node:assert/strict');
   free=100n;assert.equal(e.storage_check(base,100n,err,512),0);
   assert.equal(e.storage_check(base,101n,err,512),-1);
   free=500000000000n;assert.equal(e.storage_check(base,52000000000n,err,512),0);
-  console.log((emulator?'shadPS4':'PS4 normal')+': storage policy checks passed');
+  console.log(file+': storage policy checks passed');
  }
 })().catch(e=>{console.error(e);process.exitCode=1;});
