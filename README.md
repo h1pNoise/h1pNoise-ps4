@@ -1,4 +1,12 @@
-# h1pNoise — PS4 0.1.24
+# h1pNoise — PS4 0.1.25
+
+## Atualização 0.1.25 — download das atualizações
+
+Corrige o erro 0x80431073 causado pelo tamanho dos cabeçalhos dos
+redirecionamentos de GitHub Releases. Esta versão também disponibiliza
+o PKG pelo endereço raw do repositório para as apps antigas conseguirem
+descarregar a correção. A instalação requer confirmação no telemóvel.
+Consulte as [notas da versão](RELEASE_NOTES_0.1.25.md).
 
 ## Atualização 0.1.24 — espaço livre do disco interno
 

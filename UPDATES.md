@@ -6,6 +6,9 @@ Na página do telemóvel, **Atualizações da app** permite procurar, descarrega
 e confirmar a instalação. Não instala silenciosamente.
 
 Quem tem 0.1.9 ou anterior precisa de instalar o PKG 0.1.10 manualmente uma vez.
+O manifesto da 0.1.25 usa uma cópia do PKG no endereço raw do repositório,
+para as versões anteriores poderem descarregar a correção do erro 0x80431073.
+As versões seguintes podem voltar a apontar para o anexo GitHub Releases.
 Não há notificações com a app fechada. O download da atualização precisa da app
 aberta e da consola ligada. Os torrents e PKG já guardados são preservados.
 

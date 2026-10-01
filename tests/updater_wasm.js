@@ -18,7 +18,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed='https://github.com/test/app/releases/latest/download/update.h1p';
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000','0.1.10',packageSfo,'20',String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
- let instance,heap,cfg,resources,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred;
+ let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred;
  const m=()=>new Uint8Array(instance.exports.memory.buffer),v=()=>new DataView(m().buffer);
  const str=p=>{p=Number(p);let end=p;while(m()[end])end++;return Buffer.from(m().subarray(p,end)).toString();};
  const write=(p,s)=>m().set(Buffer.from(s+'\0'),Number(p));
@@ -57,11 +57,15 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   remove:path=>{path=str(path);assert.match(path,/^\/data\/pkg\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
   rename:(a,b)=>{a=str(a);b=str(b);if(cfg.renameFail)return -1;assert.ok(files.has(a));files.set(b,files.get(a));files.delete(a);return 0;},
   sceSysmoduleLoadModuleInternal:()=>0,sceHttpSetAutoRedirect:(_id,enable)=>{assert.equal(enable,0);return 0;},
+  sceHttpSetResponseHeaderMaxSize:(id,size)=>{assert.equal(id,4);assert.equal(size,32768n);headerLimits.set(id,Number(size));return 0;},
   sceHttpAddRequestHeader:(_id,name,val)=>{assert.equal(str(name),'Accept-Encoding');assert.equal(str(val),'identity');return 0;},
-  sceHttpSendRequest:()=>{
+  sceHttpSendRequest:id=>{
    requests.push(requestUrl);bodyOffset=0;
-   if(cfg.redirect){reply=cfg.redirect(requestUrl);if(reply)return 0;}
-   reply={status:cfg.status||200,body:requestUrl===feed?cfg.manifest:cfg.payload};return 0;
+   reply=cfg.redirect?.(requestUrl)||{status:cfg.status||200,body:requestUrl===feed?cfg.manifest:cfg.payload};
+   if(cfg.sendError)return cfg.sendError|0;
+   const size=Buffer.byteLength(reply.headers||'Location: '+(reply.location||'')+'\r\n');
+   if(!cfg.ignoreHeaderLimit&&size>headerLimits.get(id))return 0x80431073|0;
+   return 0;
   },
   sceHttpGetStatusCode:(_id,out)=>{put32(out,reply.status);return 0;},
   sceHttpGetAllResponseHeaders:(_id,out,len)=>{const s=reply.headers||'Location: '+reply.location+'\r\n',p=alloc(Buffer.byteLength(s)+1);write(p,s);put64(out,p);put64(len,Buffer.byteLength(s));return 0;},
@@ -82,14 +86,14 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceKernelSendNotificationRequest:()=>{notifications++;return 0;}
  };
  const creators=['sceNetPoolCreate','sceSslInit','sceHttpInit','sceHttpCreateTemplate','sceHttpCreateConnectionWithURL','sceHttpCreateRequestWithURL'];
- creators.forEach((name,i)=>env[name]=(...a)=>{if(name==='sceHttpCreateRequestWithURL')requestUrl=str(a[2]);assert.ok(!resources.has(i+1));resources.add(i+1);return i+1;});
+ creators.forEach((name,i)=>env[name]=(...a)=>{if(name==='sceHttpCreateRequestWithURL')requestUrl=str(a[2]);assert.ok(!resources.has(i+1));resources.add(i+1);if(i===3)headerLimits.set(i+1,5000);if(i>=4)headerLimits.set(i+1,headerLimits.get(a[0]));return i+1;});
  for(const name of ['sceNetPoolDestroy','sceSslTerm','sceHttpTerm','sceHttpDeleteTemplate','sceHttpDeleteConnection','sceHttpDeleteRequest'])env[name]=id=>{assert.ok(resources.delete(id),'cleanup '+name);return 0;};
  for(const name of ['sceHttpSetConnectTimeOut','sceHttpSetResolveTimeOut','sceHttpSetRecvTimeOut','sceHttpSetSendTimeOut'])env[name]=()=>0;
  const api={};for(const [name,fn] of Object.entries(env))api[name]=(...args)=>cfg?.fail===name?-999:fn(...args);
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=0;e.fixture_reset();}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=0;e.fixture_reset();}
  function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  function ready(options={}){available(options);op(1,0,'ready');assert.equal(e.fixture_state(2),1);assert.equal(e.fixture_done(),BigInt(pkg.length));assert.deepEqual(files.get('/data/pkg/h1pNoise-update-20.pkg'),pkg);}
@@ -101,7 +105,16 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  for(const build of ['18','19']){reset({manifest:signed(fields.map((s,i)=>i===4?build:s))});op(0,0,'current');assert.equal(e.fixture_state(1),0);}
  for(const [index,value] of [[0,'OTHER'],[1,'OTHER'],[2,'x'],[3,'1.2'],[3,'00.19'],[4,'0'],[4,'2147483648'],[5,'8191'],[5,'999999999999999999999999'],[6,'g'.repeat(128)],[7,'http://github.com/file'],[7,'https://github.com@evil.example/file'],[7,'https://github.com/file%GG'],[8,'x'.repeat(768)],[8,'bad\rtext']]){reset({manifest:signed(fields.map((s,i)=>i===index?value:s))});op(0,0,'error');assert.equal(e.fixture_state(1),0);}
  for(const changed of [(()=>{const b=signed();b[0]^=1;return b;})(),Buffer.alloc(64),Buffer.alloc(4097),signed([...fields,'extra'])]){reset({manifest:changed});op(0,0,'error');}
- for(const options of [{status:404},{status:403},{status:206},{readFail:true},...creators.map(fail=>({fail})),{fail:'sceHttpSetAutoRedirect'},{fail:'sceHttpSendRequest'},{fail:'sceHttpSetRecvTimeOut'}]){reset(options);op(0,0,'error');}
+ for(const options of [{status:404},{status:403},{status:206},{readFail:true},...creators.map(fail=>({fail})),{fail:'sceHttpSetAutoRedirect'},{fail:'sceHttpSetResponseHeaderMaxSize'},{fail:'sceHttpSendRequest'},{fail:'sceHttpSetRecvTimeOut'}]){reset(options);op(0,0,'error');}
+ // Reproduce GitHub's response > the PS4 default 5000 bytes; a larger bounded
+ // setting must be inherited by every redirect request, not set after receipt.
+ const asset='https://release-assets.githubusercontent.com/test/package';
+ const largeHeaders=(dest,n)=>{const h='Location: '+dest+'\r\nX-Security: ';return h+'x'.repeat(n-Buffer.byteLength(h)-2)+'\r\n';};
+ ready({redirect:u=>u===url?{status:302,headers:largeHeaders(asset,5226)}:u===asset?{status:200,body:pkg}:undefined});
+ assert.equal(requests.at(-1),asset);
+ available({redirect:u=>u===feed?{status:302,headers:largeHeaders(asset,32768)}:{status:200,body:signed()}});
+ for(const ignoreHeaderLimit of [false,true]){reset({ignoreHeaderLimit,redirect:()=>({status:302,headers:largeHeaders(asset,32769)})});op(0,0,'error');assert.match(str(e.fixture_message()),/limite de cabecalhos/);assert.equal(requests.length,1);}
+ for(const [sendError,message] of [[0x80431073,'limite de cabecalhos'],[0x80431075,'ligacao HTTPS']]){reset({sendError});op(0,0,'error');assert.ok(str(e.fixture_message()).includes(message));}
  available({redirect:u=>u===feed?{status:302,location:'https://release-assets.githubusercontent.com/test/feed'}:{status:200,body:signed()}});
  available({redirect:u=>u===feed?{status:302,location:'/test/app/releases/download/v0.1.10/update.h1p'}:{status:200,body:signed()}});
  for(const location of ['http://github.com/insecure','https://github.com.evil.example/update','//evil.example/update','https://evil.example/update']){reset({redirect:()=>({status:302,location})});op(0,0,'error');assert.equal(requests.length,1);}
