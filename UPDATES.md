@@ -5,6 +5,11 @@ Se existir uma versão mais recente, mostra um aviso na televisão e uma notific
 Na página do telemóvel, **Atualizações da app** permite procurar, descarregar
 e confirmar a instalação. Não instala silenciosamente.
 
+O feed anuncia a versão experimental 0.1.26. A app não usa a marca
+«Latest» do GitHub para decidir a versão: consulta o manifesto assinado em
+`releases/current/update.h1p`. Uma release só aparece na app depois de
+anunciar o respetivo manifesto nesse ficheiro.
+
 Quem tem uma versão anterior à 0.1.26 deve instalar a correção manualmente
 uma vez, por cima da app anterior e com a h1pNoise fechada: o instalador
 antigo pode recusar a substituição com 0x80990088. A 0.1.26 prepara a

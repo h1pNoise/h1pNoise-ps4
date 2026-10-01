@@ -1,10 +1,9 @@
-—z›Í2F∆"Y( ‚ûk6ñØQ™ú;CA≤T€¶Ãsäq\Ó∞π∞\N:‰ÖJ>tá!!ºo’[Á±ô◊
-ê+H1PNOISE-PS4-UPDATE-1
+û1Qúõä„^MÇ¿+…˘`z∏Eo√ÅÙÜ‰7.û®˙‚.se≠tQ9XS◊Gﬂ®ÉaëT…a˝‘M{f.5H1PNOISE-PS4-UPDATE-1
 IV0000-HBRW00001_00-HARBORPS40000000
-0.1.25
-00.35
-35
+0.1.26
+00.36
+36
 6619136
-9703af0f05299fbdde9fa7dcd4a6753329d8f04f56495b231c40d50b7274f30a08b99d51c4d34296574dfd49366377a36c89fd00bafd210ac6e49fcf3b5847cb
-https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/v0.1.25/h1pNoise-0.1.25-experimental.pkg
-Corrige o download das atualizacoes (0x80431073) e mantem a medicao do espaco interno. Requer confirmacao para instalar.
+cd47a0657fbd2c3498fbe944f97fec53acef6292d1483b16c52a261434892c0201cd49541397b601d286ca8e3bf0986701b1b187181aa89629d8b32dc6fdeadc
+https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/v0.1.26/h1pNoise-0.1.26-experimental.pkg
+Trata a recusa 0x80990088. Instala manualmente uma vez, com a app fechada. Substituicao automatizada por confirmar na consola.
