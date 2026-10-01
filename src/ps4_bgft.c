@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <orbis/Bgft.h>
 extern void link_stage(const char *stage,int result);
-typedef struct {void *params;BgftSubmitKind kind;int *task;} Submission;
+typedef struct {void *params;BgftSubmitKind kind;int *task;int (*prepare)(void *,char *,size_t);void *context;} Submission;
 
 static int register_and_start(void *context,char *error,size_t cap){
  Submission *s=context;int id=-1,rc;
@@ -13,10 +13,19 @@ static int register_and_start(void *context,char *error,size_t cap){
  else if(s->kind==BGFT_SUBMIT_PATCH)rc=sceBgftServiceIntDebugDownloadRegisterPkg(s->params,&id);
  else rc=sceBgftServiceIntDownloadRegisterTask(s->params,&id);
  link_stage("resultado registo BGFT",rc);
+ if((uint32_t)rc==0x80990088u&&s->prepare&&id<0){
+  /* The installed app is expected during a signed self-update. Prepare it
+     using AppInstUtil, not uninstall; never loop or retry a duplicate task. */
+  if(s->prepare(s->context,error,cap))return -1;
+  link_stage("registar atualizacao apos preparar substituicao",0);
+  rc=sceBgftServiceIntDownloadRegisterTaskByStorageEx(s->params,&id);
+  link_stage("resultado registo atualizacao preparada",rc);
+ }
  if(rc){
   if((uint32_t)rc==0x80990007u)snprintf(error,cap,"A PS4 recusou as permissoes do instalador BGFT (0x%08X). Envia o link-debug.log.",(unsigned)rc);
   else if((uint32_t)rc==0x80990015u)snprintf(error,cap,"Ja existe um pedido para este conteudo (0x%08X). Consulta as Transferencias antes de repetir.",(unsigned)rc);
   else if((uint32_t)rc==0x80990039u)snprintf(error,cap,"O sistema indicou falta de espaco para esta instalacao (0x%08X). Consulta o armazenamento da PS4.",(unsigned)rc);
+  else if((uint32_t)rc==0x80990088u)snprintf(error,cap,"A aplicacao ja esta instalada (0x80990088). Para atualizar a h1pNoise, fecha a app e instala o seu PKG manualmente por cima da versao anterior.");
   else snprintf(error,cap,"A PS4 recusou o registo BGFT: 0x%08X. Envia o link-debug.log.",(unsigned)rc);
   return -1;
  }
@@ -30,6 +39,10 @@ static int register_and_start(void *context,char *error,size_t cap){
  return 0;
 }
 int ps4_bgft_submit(void *params,BgftSubmitKind kind,int *task,char *error,size_t cap){
- *task=-1;Submission s={params,kind,task};
+ *task=-1;Submission s={.params=params,.kind=kind,.task=task};
+ return installer_with_permissions(register_and_start,&s,error,cap);
+}
+int ps4_bgft_submit_update(void *params,int (*prepare)(void *,char *,size_t),void *context,int *task,char *error,size_t cap){
+ *task=-1;Submission s={params,BGFT_SUBMIT_STORAGE,task,prepare,context};
  return installer_with_permissions(register_and_start,&s,error,cap);
 }

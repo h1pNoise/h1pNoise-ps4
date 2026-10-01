@@ -1,4 +1,12 @@
-# h1pNoise — PS4 0.1.25
+# h1pNoise — PS4 0.1.26
+
+## Atualização 0.1.26 — substituição da versão instalada
+
+Trata a recusa BGFT 0x80990088 ao atualizar a h1pNoise: consulta o slot
+instalado, prepara a substituição e repete o registo uma única vez.
+Instala esta correção manualmente, com a app fechada, por cima da versão
+anterior. A substituição numa PS4 real ainda precisa de confirmação.
+Consulte as [notas da versão](RELEASE_NOTES_0.1.26.md).
 
 ## Atualização 0.1.25 — download das atualizações
 

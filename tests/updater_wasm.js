@@ -18,7 +18,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed='https://github.com/test/app/releases/latest/download/update.h1p';
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000','0.1.10',packageSfo,'20',String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
- let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred;
+ let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared;
  const m=()=>new Uint8Array(instance.exports.memory.buffer),v=()=>new DataView(m().buffer);
  const str=p=>{p=Number(p);let end=p;while(m()[end])end++;return Buffer.from(m().subarray(p,end)).toString();};
  const write=(p,s)=>m().set(Buffer.from(s+'\0'),Number(p));
@@ -70,15 +70,19 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceHttpGetStatusCode:(_id,out)=>{put32(out,reply.status);return 0;},
   sceHttpGetAllResponseHeaders:(_id,out,len)=>{const s=reply.headers||'Location: '+reply.location+'\r\n',p=alloc(Buffer.byteLength(s)+1);write(p,s);put64(out,p);put64(len,Buffer.byteLength(s));return 0;},
   sceHttpReadData:(_id,dest,limit)=>{if(cfg.readFail)return -1;const n=Math.min(limit,16384,reply.body.length-bodyOffset);m().set(reply.body.subarray(bodyOffset,bodyOffset+n),Number(dest));bodyOffset+=n;return n;},
-  ps4_installer_ready:()=>0,sceAppInstUtilGetTitleIdFromPkg:(path,out,isApp)=>{assert.equal(str(path),'/data/pkg/h1pNoise-update-20.pkg');write(out,cfg.wrongInstalledId?'OTHER0001':'HBRW00001');put32(isApp,1);return 0;},
+  ps4_installer_ready:()=>0,sceAppInstUtilGetTitleIdFromPkg:(path,out,isApp)=>{assert.equal(str(path),'/data/pkg/h1pNoise-update-20.pkg');write(out,cfg.wrongInstalledId?'OTHER0001':'HBRW00001');put32(isApp,cfg.isApp??1);return 0;},
+  sceAppInstUtilGetPrimaryAppSlot:(title,out)=>{assert.ok(privileged);assert.equal(str(title),'HBRW00001');slotQueries++;put32(out,cfg.slot??0);return cfg.slotFailure?-123:0;},
+  sceAppInstUtilAppPrepareOverwritePkg:path=>{assert.ok(privileged);assert.equal(str(path),'/data/pkg/h1pNoise-update-20.pkg');prepared++;return cfg.prepareFailure?-123:0;},
   sceUserServiceInitialize:params=>{assert.equal(v().getUint32(Number(params),true),0x2bc);const rc=cfg.userInitResult||0;userReady=!rc||(rc>>>0)===0x80960003;return rc;},
   sceUserServiceGetForegroundUser:out=>{if(!userReady)return 0x80960002|0;put32(out,cfg.userId??0x10000000);return 0;},
   sceBgftServiceIntDownloadRegisterTaskByStorageEx:(p,out)=>{
    assert.ok(privileged,'BGFT registration lost permissions');
    registered++;p=Number(p);assert.equal(v().getInt32(p,true),0x10000000);assert.equal(v().getInt32(p+4,true),5);
    assert.equal(str(ptr(p+8)),fields[1]);assert.equal(str(ptr(p+16)),'/user/data/pkg/h1pNoise-update-20.pkg');
-   assert.equal(v().getUint32(p+56,true),8);assert.equal(v().getUint32(p+104,true),0);
-   if(cfg.registerFail)return -123;put32(out,cfg.invalidTask?-1:42);return 0;
+   assert.equal(v().getUint32(p+56,true),8);assert.equal(v().getUint32(p+104,true),registered===1?0:(cfg.slot??0));
+   if(cfg.registerFail)return -123;if(cfg.registerResult)return cfg.registerResult|0;
+   if(cfg.sameInstalled&&(registered===1||cfg.sameInstalledAgain))return 0x80990088|0;
+   put32(out,cfg.invalidTask?-1:42);return 0;
   },
   sceBgftServiceDownloadStartTask:id=>{assert.equal(id,42);assert.ok(privileged,'BGFT start lost permissions');started++;return cfg.startFail?-123:0;},
   sceBgftServiceIntDownloadRegisterTask:()=>{throw Error('Unexpected remote registration');},
@@ -93,11 +97,18 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=0;e.fixture_reset();}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
  function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  function ready(options={}){available(options);op(1,0,'ready');assert.equal(e.fixture_state(2),1);assert.equal(e.fixture_done(),BigInt(pkg.length));assert.deepEqual(files.get('/data/pkg/h1pNoise-update-20.pkg'),pkg);}
  ready();op(2,0,'queued');assert.equal(registered,1);assert.equal(started,1);assert.equal(e.fixture_state(3),42);op(2,-1,'queued');assert.equal(registered,1);
+ assert.equal(prepared,0);assert.equal(slotQueries,0);
+ ready({sameInstalled:true,slot:3});op(2,0,'queued');assert.equal(slotQueries,1);assert.equal(prepared,1);assert.equal(registered,2);assert.equal(started,1);op(2,-1,'queued');assert.equal(registered,2);
+ for(const options of [{slotFailure:true},{slot:-1},{prepareFailure:true}]){ready({sameInstalled:true,...options});op(2,0,'error');assert.equal(slotQueries,1);assert.equal(prepared,options.prepareFailure?1:0);assert.equal(registered,1);assert.equal(started,0);assert.equal(e.fixture_state(3),-1);assert.deepEqual(files.get('/data/pkg/h1pNoise-update-20.pkg'),pkg);}
+ ready({sameInstalled:true,sameInstalledAgain:true});op(2,0,'error');assert.equal(prepared,1);assert.equal(registered,2);assert.equal(started,0);assert.match(str(e.fixture_message()),/ja esta instalada/);
+ for(const registerResult of [0x80990015,0x80990007,0x80990039]){ready({registerResult});op(2,0,'error');assert.equal(prepared,0);assert.equal(slotQueries,0);assert.equal(registered,1);assert.equal(started,0);}
+ for(const options of [{startFail:true},{authRestoreFailure:true}]){ready({sameInstalled:true,...options});op(2,0,'error');assert.equal(prepared,1);assert.equal(registered,2);assert.equal(started,1);assert.equal(e.fixture_state(3),42);op(2,-1);assert.equal(registered,2);}
+ for(const options of [{wrongInstalledId:true},{isApp:0}]){ready({sameInstalled:true,...options});op(2,0,'error');assert.equal(prepared,0);assert.equal(slotQueries,0);assert.equal(registered,0);}
  ready({userInitResult:0x80960003|0});op(2,0,'queued');assert.equal(registered,1);assert.equal(started,1);
  available();op(0,0,'available');assert.equal(notifications,1);op(2,-1,'available');assert.equal(registered,0);
  reset();op(1,-1);e.fixture_busy(1);op(0,-1);e.fixture_busy(0);

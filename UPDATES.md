@@ -5,10 +5,13 @@ Se existir uma versão mais recente, mostra um aviso na televisão e uma notific
 Na página do telemóvel, **Atualizações da app** permite procurar, descarregar
 e confirmar a instalação. Não instala silenciosamente.
 
-Quem tem 0.1.9 ou anterior precisa de instalar o PKG 0.1.10 manualmente uma vez.
-O manifesto da 0.1.25 usa uma cópia do PKG no endereço raw do repositório,
-para as versões anteriores poderem descarregar a correção do erro 0x80431073.
-As versões seguintes podem voltar a apontar para o anexo GitHub Releases.
+Quem tem uma versão anterior à 0.1.26 deve instalar a correção manualmente
+uma vez, por cima da app anterior e com a h1pNoise fechada: o instalador
+antigo pode recusar a substituição com 0x80990088. A 0.1.26 prepara a
+substituição só após esse erro, sem desinstalar a app e com uma única tentativa
+adicional. A substituição numa PS4 real ainda precisa de confirmação.
+Os manifestos 0.1.25/0.1.26 usam uma cópia do PKG no endereço raw do
+repositório para permitir o download por clientes com o limite HTTP antigo.
 Não há notificações com a app fechada. O download da atualização precisa da app
 aberta e da consola ligada. Os torrents e PKG já guardados são preservados.
 

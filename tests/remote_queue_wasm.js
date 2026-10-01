@@ -96,7 +96,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
  for(const options of [{status:302},{status:403},{status:200},{headers:'Content-Range: bytes 0-8191/9000\r\n'},{truncated:true},{html:true},{exists:1},{patch:true,exists:0}]){run(options,-1);assert.equal(registered,0);assert.equal(started,0);}
  for(const fail of [...creators,'sceHttpSetAutoRedirect','sceHttpSetRecvTimeOut','sceHttpSendRequest','sceHttpGetAllResponseHeaders','sceUserServiceInitialize','sceUserServiceGetForegroundUser','ps4_installer_ready','sceBgftServiceIntDownloadRegisterTask']){run({fail},-1);assert.equal(started,0);}
  run({invalidTask:true},-1);assert.equal(started,0);
- for(const registerResult of [0x80990007,0x80990015,0x80990039]){const r=run({registerResult:registerResult|0},-1);assert.equal(r.task,-1);assert.equal(started,0);assert.equal(authCalls,2);if(registerResult===0x80990007){assert.match(r.error,/permissoes/);assert.doesNotMatch(r.error,/espaco/);}}
+ for(const registerResult of [0x80990007,0x80990015,0x80990039,0x80990088]){const r=run({registerResult:registerResult|0},-1);assert.equal(r.task,-1);assert.equal(registered,1);assert.equal(started,0);assert.equal(authCalls,2);if(registerResult===0x80990007){assert.match(r.error,/permissoes/);assert.doesNotMatch(r.error,/espaco/);}if(registerResult===0x80990088)assert.match(r.error,/ja esta instalada/);}
  run({authActivateFailure:true},-1);assert.equal(registered,0);assert.equal(authCalls,2);
  run({fail:'jbc_get_cred'},-1);assert.equal(registered,0);assert.equal(authCalls,0);
  const restoration=run({authRestoreFailure:true},-1);assert.equal(restoration.task,42);assert.equal(registered,1);assert.equal(started,1);assert.match(restoration.error,/restaurar/);
