@@ -49,7 +49,8 @@ static void *worker(void *arg){
    remove(path);
 #endif
    if(rename(part,path)){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao verificada.");goto done;}
-   lock(&app.mu);app.update.ready=1;unlock(&app.mu);status("ready","Atualizacao descarregada e verificada. Podes iniciar a instalacao.");rc=0;
+   lock(&app.mu);app.update.ready=1;unlock(&app.mu);
+   char msg[960];snprintf(msg,sizeof(msg),"Atualizacao descarregada e verificada em %s. Fecha a h1pNoise e instala o PKG manualmente.",path);status("ready",msg);rc=0;
   }else{
    if(verify_file(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));lock(&app.mu);app.update.task=task;unlock(&app.mu);

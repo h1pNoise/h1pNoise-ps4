@@ -1,63 +1,45 @@
 # Atualizações da h1pNoise
 
-A partir da versão 0.1.10, a app consulta o GitHub quando abre numa PS4 real.
-Se existir uma versão mais recente, mostra um aviso na televisão e uma notificação.
-Na página do telemóvel, **Atualizações da app** permite procurar, descarregar
-e confirmar a instalação. Não instala silenciosamente.
+## Recuperação 0.1.28
 
-O feed anuncia a versão experimental 0.1.27 para testar a atualização a
-partir da 0.1.26. Consulta [os passos de teste](RELEASE_NOTES_0.1.27.md).
-A app não usa a marca
-«Latest» do GitHub para decidir a versão: consulta o manifesto assinado em
-`releases/current/update.h1p`. Uma release só aparece na app depois de
-anunciar o respetivo manifesto nesse ficheiro.
+Não uses **Instalar agora** nas versões 0.1.26/0.1.27. No teste numa PS4
+real, a app desapareceu sem criar um pedido nas Transferências. A 0.1.28
+retira a preparação da substituição e suspende a instalação pela própria
+app. A procura e o download verificado continuam disponíveis; a instalação
+do PKG deve ser feita manualmente com a h1pNoise fechada.
 
-Quem tem uma versão anterior à 0.1.26 deve instalar a correção manualmente
-uma vez, por cima da app anterior e com a h1pNoise fechada: o instalador
-antigo pode recusar a substituição com 0x80990088. A 0.1.26 prepara a
-substituição só após esse erro, sem desinstalar a app e com uma única tentativa
-adicional. A substituição numa PS4 real ainda precisa de confirmação.
-Os manifestos 0.1.25/0.1.26 usam uma cópia do PKG no endereço raw do
-repositório para permitir o download por clientes com o limite HTTP antigo.
-Não há notificações com a app fechada. O download da atualização precisa da app
-aberta e da consola ligada. Os torrents e PKG já guardados são preservados.
+Se a app desapareceu durante o teste para a 0.1.27, o ficheiro
+`/data/pkg/h1pNoise-update-37.pkg` pode reinstalá-la manualmente. Instala
+depois a recuperação 0.1.28, disponível no GitHub Releases. A app guarda
+os PKG e mantém os torrents, o espaço livre e o destino `/data/pkg`.
 
-Os testes desta versão executam o código C de produção com chamadas de sistema
-simuladas: assinatura Ed25519, SHA-512, identidade e versão do PKG, limites,
-redirecionamentos HTTPS, falhas de rede/disco, limpeza de recursos, confirmação
-e prevenção de pedidos duplicados. A ligação HTTPS e a substituição da app em
-execução ainda precisam de teste numa PS4 real. A confirmação envia o pacote
-verificado ao BGFT; fecha a app e acompanha Notificações → Transferências.
-Se a consola recusar, o pacote fica em `/data/pkg/h1pNoise-update-<build>.pkg`.
-Não há desinstalação automática da app. No Windows/shadPS4 os botões ficam
-desativados porque a instalação depende de uma PS4 real.
+O feed foi reposto na 0.1.25 para retirar o aviso problemático às versões
+0.1.26/0.1.27. Não anunciamos a recuperação 0.1.28 nesse feed: as apps
+antigas ainda executariam o instalador antigo. Uma instalação automática
+precisa de um instalador independente da aplicação que está a ser substituída,
+com confirmação numa PS4 real. Não foi implementado nesta recuperação.
 
-## Publicar uma nova versão
+A página 0.1.28 deixa de mostrar a confirmação de instalação. O servidor
+recusa o pedido de instalação de uma página antiga e preserva o PKG verificado.
+As notas completas estão em [RELEASE_NOTES_0.1.28.md](RELEASE_NOTES_0.1.28.md).
 
-Repositório e releases: https://github.com/h1pNoise/h1pNoise-ps4
+## Manifestos e publicação
 
-O feed da app usa o ficheiro HTTPS estável `releases/current/update.h1p` no
-repositório; cada manifesto aponta para o PKG anexado à release da sua versão.
-A página GitHub Releases documenta cada versão e fornece o código-fonte da tag.
+Repositório: https://github.com/h1pNoise/h1pNoise-ps4
 
-1. Aumenta `APP_VERSION`, `APP_BUILD` e `APP_SFO_VERSION` em `src/version.h`, mantendo TITLE_ID e CONTENT_ID.
-2. Compila e testa o PKG PS4 normal, nunca a build shadPS4.
-3. Cria uma release GitHub com uma tag nova, por exemplo `v0.1.11`.
-4. Gera `update.h1p` com `tools/release_update.py`, usando o PKG final e o URL imutável da tag.
-5. Anexa o PKG final e `update.h1p` à release e publica-a. Verifica o download
-   público antes de copiar o manifesto para `releases/current/update.h1p` e
-   `releases/v0.1.11/update.h1p` no repositório. Só este último passo anuncia
-   a atualização às apps existentes.
-6. Testa primeiro numa consola antes de distribuir. Nunca substituas uma tag publicada.
+A app consulta `releases/current/update.h1p` no endereço HTTPS raw do
+repositório. Não usa a marca Latest do GitHub para escolher a versão.
+Cada manifesto tem 64 bytes de assinatura Ed25519 e nove linhas UTF-8:
+magic, CONTENT_ID, versão, APP_VER SFO, build, tamanho, SHA-512, URL HTTPS
+do PKG e notas. A chave original mantém-se; a chave privada nunca é publicada.
+O manifesto tem no máximo 4096 bytes e o PKG 128 MiB.
 
-Exemplo:
+Para preparar uma versão, aumenta APP_VERSION, APP_BUILD e APP_SFO_VERSION
+sem alterar TITLE_ID/CONTENT_ID; compila e valida o pacote PS4 normal;
+cria uma tag nova e disponibiliza o PKG com as notas. Nunca substituas uma
+tag publicada. Só anuncia um manifesto no feed após verificar o download
+público, a assinatura e a compatibilidade das versões antigas.
 
-```text
-python tools/release_update.py --pkg h1pNoise-0.1.11-PS4.pkg --private-key ../h1pNoise-release-private/ed25519.pem --out update.h1p --version 0.1.11 --build 21 --url https://github.com/h1pNoise/h1pNoise-ps4/releases/download/v0.1.11/h1pNoise-0.1.11-PS4.pkg --notes "Correções e melhorias."
-```
-
-O comando prepara o ficheiro e não publica nada. A chave privada fica fora do projeto e nunca entra no GitHub, ZIP ou PKG. A app inclui apenas a chave pública em `src/update_config.h`; mudar essa chave impede instalações antigas de validar novas versões.
-
-`update.h1p` contém 64 bytes de assinatura Ed25519 seguidos de nove linhas UTF-8:
-magic, CONTENT_ID, versão, APP_VER SFO, build, tamanho, SHA-512, URL HTTPS do PKG e notas.
-O limite é 4096 bytes e o pacote 128 MiB. Os certificados HTTPS permanecem ativos.
+Nesta fase, as versões de recuperação são distribuídas para instalação
+manual, sem atualizar o feed da app. Mantém os certificados HTTPS ativos,
+a validação da assinatura, SHA-512, identidade e versão do PKG.

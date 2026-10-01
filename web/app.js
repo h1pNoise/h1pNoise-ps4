@@ -35,7 +35,7 @@ function controls(){
  $('confirm-reset').disabled=blocked||!d.loaded;
  $('update-check').disabled=blocked||!u.supported;
  $('update-download').disabled=blocked||!u.supported||!u.available||u.ready;
- $('update-install').disabled=$('update-confirm-install').disabled=blocked||!u.supported||!u.ready;
+ $('update-install').disabled=$('update-confirm-install').disabled=true;
 }
 function selectFile(file){
  text('upload-error','');
@@ -103,7 +103,7 @@ function render(d){
  text('update-message',u.message||'As atualizações da aplicação requerem uma PS4 real.');
  text('update-notes',u.notes||'');$('update-notes').hidden=!u.available||!u.notes;
  $('update-download').hidden=!u.available||u.ready||u.busy||u.task>=0;
- $('update-install').hidden=!u.ready||u.busy||u.task>=0;
+ $('update-install').hidden=true;$('update-confirm').hidden=true;
  $('update-progress').hidden=$('update-bytes').hidden=!u.size||(!u.ready&&u.phase!=='downloading');
  $('update-progress').value=u.size?Math.min(100,100*u.done/u.size):0;text('update-bytes',size(u.done||0)+' / '+size(u.size||0));
  controls();
@@ -156,9 +156,9 @@ $('confirm-reset').onclick=async()=>{
 };
 $('update-check').onclick=async()=>{if(!$('update-check').disabled)await action('update/check',null,'update-error');};
 $('update-download').onclick=async()=>{if(!$('update-download').disabled)await action('update/download',null,'update-error');};
-$('update-install').onclick=()=>{if(!$('update-install').disabled){$('update-confirm').hidden=false;$('update-confirm-install').focus();}};
+$('update-install').onclick=()=>{};
 $('update-cancel').onclick=()=>{$('update-confirm').hidden=true;};
-$('update-confirm-install').onclick=async()=>{if(!$('update-confirm-install').disabled&&await action('update/install',null,'update-error'))$('update-confirm').hidden=true;};
+$('update-confirm-install').onclick=()=>{};
 const pairingCode=new URLSearchParams(location.hash.slice(1)).get('code');
 if(pairingCode&&/^[0-9]{4}$/.test(pairingCode)){$('code').value=pairingCode;history.replaceState(null,'',location.pathname+location.search);$('connect').onclick();}
 setInterval(refresh,2500);

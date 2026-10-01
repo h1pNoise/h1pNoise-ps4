@@ -1,4 +1,16 @@
-# h1pNoise — PS4 0.1.27
+# h1pNoise — PS4 0.1.28
+
+## Recuperação 0.1.28 — instalar manualmente
+
+O teste na PS4 revelou que a instalação pela própria app na 0.1.26/0.1.27
+podia remover a versão atual sem criar a nova transferência. Não uses
+Instalar agora nessas versões. Instala a 0.1.28 manualmente com a app fechada.
+Esta recuperação suspende esse método, retira o botão e mantém o download
+verificado. O feed da app foi reposto na 0.1.25; a recuperação está disponível
+na release para instalação manual. Consulta as [notas](RELEASE_NOTES_0.1.28.md).
+
+Os parágrafos seguintes descrevem versões anteriores; os testes de
+autoatualização da 0.1.26/0.1.27 foram suspensos.
 
 ## Atualização 0.1.27 — teste do atualizador
 
