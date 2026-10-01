@@ -1,4 +1,11 @@
-# h1pNoise — PS4 0.1.26
+# h1pNoise — PS4 0.1.27
+
+## Atualização 0.1.27 — teste do atualizador
+
+Mantém as funcionalidades da 0.1.26 e aumenta a versão para permitir testar
+uma atualização completa a partir dessa build numa PS4 real. Segue os passos
+nas [notas da versão](RELEASE_NOTES_0.1.27.md). A substituição no hardware
+real ainda precisa de confirmação.
 
 ## Atualização 0.1.26 — substituição da versão instalada
 
