@@ -1,11 +1,10 @@
-∆¿ÆŒÿ∫êÒ<d+«;©Î¡€T}|âImÒh6]Û—6Æı˛gãì—GìàpUÕïÿy
-ëFÇ‚rÑf–$ÙñÉ
-H1PNOISE-PS4-UPDATE-1
+—z›Í2F∆"Y( ‚ûk6ñØQ™ú;CA≤T€¶Ãsäq\Ó∞π∞\N:‰ÖJ>tá!!ºo’[Á±ô◊
+ê+H1PNOISE-PS4-UPDATE-1
 IV0000-HBRW00001_00-HARBORPS40000000
-0.1.27
-00.37
-37
+0.1.25
+00.35
+35
 6619136
-038b36b4320ea2b8bbcfda40f0a9f16a8f79303acdd9f3dbdc7e6615ad7bb37be8bbfa5c1b1135a73abfa076d8af7915ded862cb7ce3d4b6504e6d6bfe0b631e
-https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/v0.1.27/h1pNoise-0.1.27-experimental.pkg
-Versao de teste: mesmas funcionalidades da 0.1.26. Descarrega, confirma Instalar agora e fecha a app quando for enviada ao sistema. Reabre para confirmar 0.1.27.
+9703af0f05299fbdde9fa7dcd4a6753329d8f04f56495b231c40d50b7274f30a08b99d51c4d34296574dfd49366377a36c89fd00bafd210ac6e49fcf3b5847cb
+https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/v0.1.25/h1pNoise-0.1.25-experimental.pkg
+Corrige o download das atualizacoes (0x80431073) e mantem a medicao do espaco interno. Requer confirmacao para instalar.
