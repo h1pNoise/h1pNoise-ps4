@@ -1,4 +1,18 @@
-# h1pNoise — PS4 0.1.30
+# h1pNoise — PS4 0.1.31
+
+## Testar o canal de atualizações — 0.1.31
+
+Na 0.1.30, carrega **Procurar atualização**: a 0.1.31 anunciada no canal
+novo deve aparecer como **Nova versão**. Carrega **Descarregar atualização**;
+o PKG verificado fica em `/data/pkg/h1pNoise-update-41.pkg`. Fecha a app,
+desliga **Enable Background Installation** no GoldHEN e instala pelo
+Package Installer. Aceita a confirmação de substituição/reinstalação se
+aparecer. Não desinstales primeiro. Este método foi confirmado pelo
+utilizador ao instalar a 0.1.30 sobre a versão anterior.
+
+A 0.1.31 mantém o canal separado e acrescenta estas instruções à página
+e à consola. O aviso/download na PS4 real ainda precisa deste teste.
+Consulta as [notas 0.1.31](RELEASE_NOTES_0.1.31.md).
 
 ## Avisos e downloads de atualizações — 0.1.30
 

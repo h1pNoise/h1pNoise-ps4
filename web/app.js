@@ -111,7 +111,7 @@ function render(d){
  $('update-install').hidden=u.mode!=='runtime'||!u.ready||u.busy; $('update-confirm').hidden=true;
  text('update-download',u.mode==='runtime'?'Atualizar agora':'Descarregar atualização');
  text('update-install','Reiniciar com a nova versão');
- text('update-footnote',u.mode==='runtime'?'Também podes carregar X no comando da PS4. A app descarrega, verifica e reinicia.':'A instalação desta versão é manual.');
+ text('update-footnote',u.mode==='runtime'?'Também podes carregar X no comando da PS4. A app descarrega, verifica e reinicia.':'Fecha a app e instala pelo GoldHEN, com Enable Background Installation desligado. Confirma a substituição se for pedida.');
  $('update-progress').hidden=$('update-bytes').hidden=!u.size||(!u.ready&&u.phase!=='downloading');
  $('update-progress').value=u.size?Math.min(100,100*u.done/u.size):0;text('update-bytes',size(u.done||0)+' / '+size(u.size||0));
  controls();

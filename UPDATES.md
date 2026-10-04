@@ -1,5 +1,20 @@
 # Atualizações da h1pNoise
 
+## Teste real 0.1.30 → 0.1.31
+
+O utilizador confirmou que a instalação por cima funciona com **Enable
+Background Installation desligado**. Com essa opção ligada, recebia
+`Package already installed`. Fecha a h1pNoise, desliga a opção no GoldHEN,
+instala o PKG pelo Package Installer e aceita substituir/reinstalar se
+for pedido. Não desinstales primeiro.
+
+Para testar o canal: mantém a 0.1.30 instalada, procura uma atualização e
+confirma que aparece 0.1.31 / **Nova versão**. Descarrega pela página:
+`/data/pkg/h1pNoise-update-41.pkg`. Instala pelo procedimento acima,
+reabre a h1pNoise e confirma **Versão instalada: 0.1.31**. Uma nova procura
+deve mostrar **Atualizada** enquanto o canal anunciar a build 41.
+O aviso e o download real na consola ainda precisam de confirmação.
+
 ## Canal separado — a partir da 0.1.30
 
 Instala a 0.1.30 manualmente uma vez para aderir ao novo canal. Os PKG desta

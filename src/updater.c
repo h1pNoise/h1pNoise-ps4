@@ -77,7 +77,7 @@ static void *worker(void *arg){
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");update_notify("h1pNoise: a abrir a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
 #else
-   char msg[960];snprintf(msg,sizeof(msg),"Atualizacao descarregada e verificada em %s. Fecha a h1pNoise e instala o PKG manualmente.",path);status("ready",msg);rc=0;
+   char msg[960];snprintf(msg,sizeof(msg),"Atualizacao descarregada e verificada em %s. Fecha a h1pNoise e instala pelo Package Installer do GoldHEN, com Enable Background Installation desligado.",path);status("ready",msg);rc=0;
 #endif
   }else{
    if(verify_file(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}

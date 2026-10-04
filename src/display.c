@@ -66,7 +66,7 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
 #ifdef HARBOR_RUNTIME_UPDATES
   text(84,456,"X para atualizar · A app reinicia após verificar.",0,MINT,702);
 #else
-  text(84,456,"Fecha a app e instala o PKG manualmente pelo GoldHEN.",0,MINT,702);
+  text(84,456,"GoldHEN: fecha a app e desliga Background Installation.",0,MINT,702);
 #endif
  }else if(direct){
   text(84,236,error?"Vamos verificar este pedido.":s->direct_busy?"A preparar a transferência.":"A PS4 trata do resto.",2,TEXT,702);
