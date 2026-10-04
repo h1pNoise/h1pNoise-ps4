@@ -42,7 +42,13 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
  px=pixels;rect(0,0,W,H,BG);rect(56,136,1168,1,LINE);
  for(int y=0;y<88;y++)for(int x=0;x<88;x++)px[(34+y)*W+52+x]=ui_logo[y*88+x];
  text(158,43,"h1pNoise",2,TEXT,500);
- if(s->update_available){char update[120];snprintf(update,sizeof(update),"Nova versão %s · X para atualizar",s->update_version);text(159,84,update,0,MINT,800);}
+ if(s->update_available){char update[120];
+#ifdef HARBOR_RUNTIME_UPDATES
+  snprintf(update,sizeof(update),"Nova versão %s · X para atualizar",s->update_version);
+#else
+  snprintf(update,sizeof(update),"Nova versão %s · Descarrega pelo telemóvel",s->update_version);
+#endif
+  text(159,84,update,0,MINT,800);}
  else text(159,84,"CENTRAL DE TRANSFERÊNCIAS",0,MUTED,600);
  rounded(1030,46,194,34,17,has_qr?0xff193229:0xff34291b);center(1127,52,has_qr?(s->emulator?"shadPS4 / teste":"PS4 ligada à rede"):"Rede indisponível",0,has_qr?MINT:WARN,178);
  text(1052,91,APP_VERSION " · Experimental",0,MUTED,174);
@@ -57,7 +63,11 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
   snprintf(value,sizeof(value),"h1pNoise %s",s->update_version);text(84,244,value,3,TEXT,680);
   wrap(84,313,s->update_message,1,MUTED,702,4);
   rounded(84,436,702,7,3,LINE);if(s->update_size){double progress=(double)s->update_done/s->update_size;if(progress>1)progress=1;if(progress>0)rounded(84,436,(int)(702*progress),7,3,MINT);}
+#ifdef HARBOR_RUNTIME_UPDATES
   text(84,456,"X para atualizar · A app reinicia após verificar.",0,MINT,702);
+#else
+  text(84,456,"Fecha a app e instala o PKG manualmente pelo GoldHEN.",0,MINT,702);
+#endif
  }else if(direct){
   text(84,236,error?"Vamos verificar este pedido.":s->direct_busy?"A preparar a transferência.":"A PS4 trata do resto.",2,TEXT,702);
   wrap(84,292,s->message,1,error?WARN:MUTED,702,4);

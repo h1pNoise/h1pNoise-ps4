@@ -40,7 +40,7 @@ static void *worker(void *arg){
  int op=(int)(intptr_t)arg,rc=-1;char error[512]={0};UpdateManifest m;
  if(op==0){
   ManifestBuffer b={0};if(update_http_get(UPDATE_FEED_URL,sizeof(b.data),manifest_sink,&b,error,sizeof(error))||update_manifest_read(b.data,b.used,UPDATE_PUBLIC_KEY,&m,error,sizeof(error)))goto done;
-  if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status("current",m.build<APP_BUILD?"Nao ha uma atualizacao mais recente neste canal.":"Tens a versao mais recente publicada.");rc=0;goto done;}
+  if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status(m.build<APP_BUILD?"channel-old":"current",m.build<APP_BUILD?"O canal anuncia uma versao anterior a instalada. Consulta as releases no GitHub.":"Tens a versao mais recente deste canal de atualizacoes.");rc=0;goto done;}
   if(strcmp(m.sfo,APP_SFO_VERSION)<=0){snprintf(error,sizeof(error),"A versao PS4 publicada nao e mais recente.");goto done;}
   lock(&app.mu);app.update.manifest=m;app.update.available=1;app.update.ready=0;memcpy(app.update.signed_manifest,b.data,b.used);app.update.signed_size=b.used;int notify=app.update.notified!=m.build;app.update.notified=m.build;unlock(&app.mu);
   char msg[180];

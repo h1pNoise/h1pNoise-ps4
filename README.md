@@ -1,4 +1,18 @@
-# h1pNoise — PS4 0.1.29
+# h1pNoise — PS4 0.1.30
+
+## Avisos e downloads de atualizações — 0.1.30
+
+Instala a 0.1.30 manualmente uma vez, com a app fechada. Esta versão passa
+a consultar um canal separado das versões 0.1.26/0.1.27. As futuras releases
+anunciadas nesse canal aparecem em **Procurar atualização**, com aviso na
+consola e download verificado para `/data/pkg`. A instalação do PKG continua
+manual pelo GoldHEN; a app nunca remove a versão instalada.
+
+Publicar uma release no GitHub não basta: é necessário atualizar também o
+manifesto assinado do canal `manual-v1`. O indicador **Pre-release/Latest**
+não determina os avisos. Uma resposta mais antiga passa a mostrar **Canal
+desatualizado**, sem afirmar que a versão instalada é a última publicada.
+Consulta as [notas 0.1.30](RELEASE_NOTES_0.1.30.md) e [a publicação do canal](UPDATES.md).
 
 ## Magnets — 0.1.29
 

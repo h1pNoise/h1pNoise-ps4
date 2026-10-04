@@ -23,6 +23,7 @@ def main():
  for x in ['pkg','private-key','out']:p.add_argument('--'+x,type=Path,required=True)
  for x in ['version','url','notes']:p.add_argument('--'+x,required=True)
  p.add_argument('--build',type=int,required=True)
+ p.add_argument('--channel',choices=['manual-v1'],help='Validate eligibility for the separate manual-install channel')
  p.add_argument('--runtime',action='store_true',help='Sign executable update for the bootstrap channel (not a PKG)')
  p.add_argument('--sfo',help='Runtime version field, e.g. 00.40')
  a=p.parse_args();data=a.pkg.read_bytes()
@@ -33,6 +34,10 @@ def main():
  else:sfo=metadata(data)
  if not 8192<=len(data)<=128*1024*1024 or not 0<a.build<2147483648:raise ValueError('Size/build out of range')
  if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',a.version):raise ValueError('Use a numeric version')
+ if a.channel:
+  if a.runtime:raise ValueError('Manual PKG and executable channels must stay separate')
+  if tuple(map(int,a.version.split('.'))) < (0,1,30) or a.build<40 or sfo['APP_VER']<'00.40':raise ValueError('manual-v1 requires version 0.1.30 / build 40 / APP_VER 00.40 or newer')
+  if 'shadps4' in a.pkg.name.lower():raise ValueError('Do not announce an emulator-only PKG to real consoles')
  if not a.url.startswith('https://') or len(a.url)>=2048 or any(ord(c)<=32 or ord(c)>=127 or c in '\\#' for c in a.url):raise ValueError('Use a direct HTTPS URL')
  if len(a.notes.encode())>=768 or any(ord(c)<32 or ord(c)==127 for c in a.notes):raise ValueError('Use a single-line description below 768 bytes')
  body=('\n'.join(['H1PNOISE-PS4-RUNTIME-1' if a.runtime else 'H1PNOISE-PS4-UPDATE-1',CID,a.version,sfo['APP_VER'],str(a.build),str(len(data)),hashlib.sha512(data).hexdigest(),a.url,a.notes])+'\n').encode()

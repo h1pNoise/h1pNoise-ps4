@@ -101,9 +101,9 @@ function render(d){
  badge('link-badge',dp==='error'?'error':dp==='checking'?'online busy':dp==='queued'?'online':'');
  text('link-status',!d.directSupported?'O envio para as Transferências requer uma PS4 real. No PC e no shadPS4 podes testar a página e os torrents.':d.directMessage||'Envia o link e acompanha o pedido em Notificações → Transferências na PS4.');
  const u=d.update||{};
- const updateLabels={idle:'Por verificar',checking:'A procurar',current:'Atualizada',available:'Nova versão',downloading:'A descarregar',ready:'Pronta para instalar',installing:'A preparar instalação',queued:'Enviada para a PS4',error:'Requer atenção'};
+ const updateLabels={idle:'Por verificar',checking:'A procurar',current:'Atualizada','channel-old':'Canal desatualizado',available:'Nova versão',downloading:'A descarregar',ready:'Pronta para instalar',installing:'A preparar instalação',queued:'Enviada para a PS4',error:'Requer atenção'};
  text('update-label',u.supported?(updateLabels[u.phase]||'Por verificar'):'PS4 real');
- badge('update-badge',u.phase==='error'?'warn':u.available?'online':'');
+ badge('update-badge',u.phase==='error'||u.phase==='channel-old'?'warn':u.available?'online':'');
  text('update-version','Versão instalada: '+(u.current||'0.1.10')+(u.available?' · Disponível: '+u.version:''));
  text('update-message',u.message||'As atualizações da aplicação requerem uma PS4 real.');
  text('update-notes',u.notes||'');$('update-notes').hidden=!u.available||!u.notes;

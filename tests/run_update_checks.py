@@ -2,7 +2,7 @@
 Uses a fresh test-only signing key; never reads the release private key.
 """
 from pathlib import Path
-import argparse,subprocess
+import argparse,subprocess,re
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 root=Path(__file__).resolve().parents[1]
@@ -16,8 +16,10 @@ build=root/'build';build.mkdir(exist_ok=True)
 test_key=build/'test-only-ed25519.pem'
 test_key.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
 config=build/'update-test-config.h'
+feeds=re.findall(r'^#define UPDATE_FEED_URL "([^"]+)"', (root/'src/update_config.h').read_text(), re.M)
+feed=feeds[0] if a.runtime else feeds[1]
 config.write_text('''#define H1PNOISE_UPDATE_CONFIG_H
-#define UPDATE_FEED_URL "https://github.com/test/app/releases/latest/download/update.h1p"
+#define UPDATE_FEED_URL "'''+feed+'''"
 static const unsigned char UPDATE_PUBLIC_KEY[32]={'''+','.join(str(b) for b in public)+'''};
 #define H1PNOISE_VERSION_H
 #define APP_VERSION "0.1.9"
@@ -31,5 +33,5 @@ if a.runtime:sources.extend(['runtime_update.c','bootstrap.c'])
 cmd=[a.llvm/'clang.exe','--target=wasm64','-O1','-nostdlib','-D__ORBIS__','-isystem',a.sdk/'include','-include',config,'-Wl,--no-entry','-Wl,--export-all','-Wl,--export-table','-Wl,--allow-undefined','-Wl,-z,stack-size=262144',*[root/'src'/s for s in sources],root/'tests/updater_fixture.c','-o',build/'updater-test.wasm']
 if a.runtime:cmd[2:2]=['-DHARBOR_RUNTIME_UPDATES','-DHARBOR_RUNTIME_TEST']
 subprocess.run([str(x) for x in cmd],check=True)
-try:subprocess.run([str(a.node),str(root/('tests/runtime_wasm.js' if a.runtime else 'tests/updater_wasm.js')),str(build/'updater-test.wasm'),str(a.pkg),str(test_key)],check=True)
+try:subprocess.run([str(a.node),str(root/('tests/runtime_wasm.js' if a.runtime else 'tests/updater_wasm.js')),str(build/'updater-test.wasm'),str(a.pkg),str(test_key),feed],check=True)
 finally:test_key.unlink(missing_ok=True)

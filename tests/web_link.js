@@ -64,7 +64,7 @@ const setURL=async value=>{nodes['pkg-url'].value=value;await fire('pkg-url','in
  networkError=true;await ctx.refresh();for(const id of ['send-link','upload','reset','install','start'])assert.equal(nodes[id].disabled,true,id);assert.equal(nodes['pair-form'].hidden,false);
  networkError=false;await ctx.refresh();assert.equal(nodes['pair-form'].hidden,true);assert.equal(nodes.connection.textContent,'PS4 ligada');
  state.update={supported:false,busy:false,task:-1,available:false,ready:false,current:'0.1.10',phase:'idle'};await ctx.refresh();assert.equal(nodes['update-check'].disabled,true);
- state.update.supported=true;await ctx.refresh();await nodes['update-check'].click();assert.equal(lastPost.url,'/api/update/check');
+ state.update.supported=true;state.update.phase='channel-old';await ctx.refresh();assert.equal(nodes['update-label'].textContent,'Canal desatualizado');assert.equal(nodes['update-download'].hidden,true);assert.equal(nodes['update-install'].hidden,true);await nodes['update-check'].click();assert.equal(lastPost.url,'/api/update/check');
  Object.assign(state.update,{available:true,version:'0.1.11',phase:'available',notes:'Melhorias'});await ctx.refresh();assert.equal(nodes['update-download'].hidden,false);assert.equal(nodes['update-install'].hidden,true);
  await nodes['update-download'].click();assert.equal(lastPost.url,'/api/update/download');
  Object.assign(state.update,{busy:true,phase:'downloading',done:100,size:200});await ctx.refresh();assert.equal(nodes['update-progress'].value,50);for(const id of ['update-check','update-download','update-install','upload','send-link'])assert.equal(nodes[id].disabled,true,id);

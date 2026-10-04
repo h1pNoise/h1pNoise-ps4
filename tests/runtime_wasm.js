@@ -4,7 +4,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
 (async()=>{
  const pkg=fs.readFileSync(process.argv[3]),key=crypto.createPrivateKey(fs.readFileSync(process.argv[4]));
  const packageSfo='00.40';
- const url='https://github.com/test/app/releases/download/v0.1.30/app.self',feed='https://github.com/test/app/releases/latest/download/update.h1p';
+ const url='https://github.com/test/app/releases/download/v0.1.30/app.self',feed=process.argv[5];
  const fields=['H1PNOISE-PS4-RUNTIME-1','IV0000-HBRW00001_00-HARBORPS40000000','0.1.30',packageSfo,'40',String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared,execPaths=[];
@@ -116,7 +116,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  available();op(0,0,'available');assert.equal(notifications,1);op(2,-1,'available');assert.equal(registered,0);
  reset();op(1,-1);e.fixture_busy(1);op(0,-1);e.fixture_busy(0);
  reset({threadFail:true});op(0,-1,'error');
- for(const build of ['18','19']){reset({manifest:signed(fields.map((s,i)=>i===4?build:s))});op(0,0,'current');assert.equal(e.fixture_state(1),0);}
+ for(const build of ['18','19']){reset({manifest:signed(fields.map((s,i)=>i===4?build:s))});op(0,0,build==='18'?'channel-old':'current');assert.equal(e.fixture_state(1),0);}
  for(const [index,value] of [[0,'OTHER'],[1,'OTHER'],[2,'x'],[3,'1.2'],[3,'00.19'],[4,'0'],[4,'2147483648'],[5,'8191'],[5,'999999999999999999999999'],[6,'g'.repeat(128)],[7,'http://github.com/file'],[7,'https://github.com@evil.example/file'],[7,'https://github.com/file%GG'],[8,'x'.repeat(768)],[8,'bad\rtext']]){reset({manifest:signed(fields.map((s,i)=>i===index?value:s))});op(0,0,'error');assert.equal(e.fixture_state(1),0);}
  for(const changed of [(()=>{const b=signed();b[0]^=1;return b;})(),Buffer.alloc(64),Buffer.alloc(4097),signed([...fields,'extra'])]){reset({manifest:changed});op(0,0,'error');}
  for(const options of [{status:404},{status:403},{status:206},{readFail:true},...creators.map(fail=>({fail})),{fail:'sceHttpSetAutoRedirect'},{fail:'sceHttpSetResponseHeaderMaxSize'},{fail:'sceHttpSendRequest'},{fail:'sceHttpSetRecvTimeOut'}]){reset(options);op(0,0,'error');}

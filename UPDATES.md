@@ -1,5 +1,40 @@
 # Atualizações da h1pNoise
 
+## Canal separado — a partir da 0.1.30
+
+Instala a 0.1.30 manualmente uma vez para aderir ao novo canal. Os PKG desta
+versão usam `releases/manual-v1/current.h1p` no ramo `main`, com a mesma
+chave pública Ed25519. Ao abrir a app ou carregar **Procurar atualização**,
+ela compara a build instalada com a anunciada. Uma build superior mostra
+o aviso na consola e na página e permite descarregar o PKG verificado para
+`/data/pkg/h1pNoise-update-<build>.pkg`. Fecha a app e instala pelo GoldHEN.
+Não há instalação automática, remoção da app, nem substituição BGFT.
+
+O canal legado `releases/current/update.h1p` permanece na 0.1.25. As versões
+0.1.26/0.1.27 não conhecem o endereço novo e não recebem os avisos dele.
+O canal experimental de executáveis `releases/runtime/current.h1p` também
+é separado e não está ativo nos PKG normais.
+
+Para publicar uma futura atualização no canal manual:
+
+1. Aumenta versão, build e APP_VER, mantendo TITLE_ID e CONTENT_ID.
+2. Compila e valida o PKG para a PS4 real; publica uma tag e asset novos.
+3. Descarrega o asset público e confirma que é idêntico ao PKG validado.
+4. Usa `tools/release_update.py --channel manual-v1`, com o PKG real, a
+   versão, build, URL HTTPS do asset, notas e chave privada fora do projeto,
+   para gerar `releases/manual-v1/current.h1p`. A chave privada nunca vai
+   para o GitHub. O assinador recusa builds anteriores à 40 e o PKG shadPS4.
+5. Verifica assinatura, hash, tamanho e identidade do manifesto e publica
+   apenas esse ficheiro assinado no ramo `main`. Confirma o download público
+   e a simulação do aviso/download antes de anunciar aos utilizadores.
+
+Publicar apenas a release, ou mudar **Pre-release/Latest**, não anuncia
+uma versão neste canal. O manifesto inicial anuncia 0.1.30 / build 40:
+a própria 0.1.30 mostra **Atualizada**; uma versão futura anunciada com
+build superior apresenta **Nova versão**. Se o canal ficar para trás,
+mostra **Canal desatualizado**. Erros de rede ou de assinatura nunca são
+tratados como confirmação de que a app está atualizada.
+
 ## Magnets — 0.1.29
 
 A release 0.1.29 acrescenta magnets e é distribuída para instalação manual,
@@ -39,7 +74,8 @@ As notas completas estão em [RELEASE_NOTES_0.1.28.md](RELEASE_NOTES_0.1.28.md).
 
 Repositório: https://github.com/h1pNoise/h1pNoise-ps4
 
-A app consulta `releases/current/update.h1p` no endereço HTTPS raw do
+A app até à 0.1.29 consulta `releases/current/update.h1p`; a partir da
+0.1.30 consulta `releases/manual-v1/current.h1p` no endereço HTTPS raw do
 repositório. Não usa a marca Latest do GitHub para escolher a versão.
 Cada manifesto tem 64 bytes de assinatura Ed25519 e nove linhas UTF-8:
 magic, CONTENT_ID, versão, APP_VER SFO, build, tamanho, SHA-512, URL HTTPS
@@ -52,6 +88,7 @@ cria uma tag nova e disponibiliza o PKG com as notas. Nunca substituas uma
 tag publicada. Só anuncia um manifesto no feed após verificar o download
 público, a assinatura e a compatibilidade das versões antigas.
 
-Nesta fase, as versões de recuperação são distribuídas para instalação
-manual, sem atualizar o feed da app. Mantém os certificados HTTPS ativos,
-a validação da assinatura, SHA-512, identidade e versão do PKG.
+As versões de recuperação anteriores à 0.1.30 são distribuídas para
+instalação manual, sem atualizar o canal legado. As novas versões podem
+ser anunciadas apenas no canal separado `manual-v1`. Mantém os certificados
+HTTPS ativos, a validação da assinatura, SHA-512, identidade e versão do PKG.

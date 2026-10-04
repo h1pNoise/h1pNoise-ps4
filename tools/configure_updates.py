@@ -15,7 +15,11 @@ def main():
   with private.open('xb') as f:f.write(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
  public=key.public_key().public_bytes(serialization.Encoding.Raw,serialization.PublicFormat.Raw)
  text='#ifndef H1PNOISE_UPDATE_CONFIG_H\n#define H1PNOISE_UPDATE_CONFIG_H\n'
- text+=f'#define UPDATE_FEED_URL "https://github.com/{a.repo}/releases/latest/download/update.h1p"\n'
+ text+='#ifdef HARBOR_RUNTIME_UPDATES\n'
+ text+=f'#define UPDATE_FEED_URL "https://raw.githubusercontent.com/{a.repo}/main/releases/runtime/current.h1p"\n'
+ text+='#else\n'
+ text+=f'#define UPDATE_FEED_URL "https://raw.githubusercontent.com/{a.repo}/main/releases/manual-v1/current.h1p"\n'
+ text+='#endif\n'
  text+=f'#define UPDATE_REPOSITORY "https://github.com/{a.repo}"\n'
  text+='static const unsigned char UPDATE_PUBLIC_KEY[32]={'+','.join(str(b) for b in public)+'};\n#endif\n'
  (ROOT/'src/update_config.h').write_text(text,encoding='ascii')

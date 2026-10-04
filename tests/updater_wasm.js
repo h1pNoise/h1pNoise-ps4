@@ -15,7 +15,8 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   }
  }
  assert.match(packageSfo||'',/^\d{2}\.\d{2}$/);assert.ok(packageSfo>'00.19','Supply a package newer than the test installed version 00.19');
- const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed='https://github.com/test/app/releases/latest/download/update.h1p';
+ const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed=process.argv[5];
+ assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/manual-v1\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000','0.1.10',packageSfo,'20',String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared;
@@ -105,7 +106,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  available();op(0,0,'available');assert.equal(notifications,1);op(2,-1,'available');assert.equal(registered,0);
  reset();op(1,-1);e.fixture_busy(1);op(0,-1);e.fixture_busy(0);
  reset({threadFail:true});op(0,-1,'error');
- for(const build of ['18','19']){reset({manifest:signed(fields.map((s,i)=>i===4?build:s))});op(0,0,'current');assert.equal(e.fixture_state(1),0);}
+ for(const build of ['18','19']){reset({manifest:signed(fields.map((s,i)=>i===4?build:s))});op(0,0,build==='18'?'channel-old':'current');assert.equal(e.fixture_state(1),0);assert.equal(notifications,0);assert.equal(e.fixture_state(2),0);assert.match(str(e.fixture_message()),build==='18'?/canal anuncia uma versao anterior/:/mais recente deste canal/);}
  for(const [index,value] of [[0,'OTHER'],[1,'OTHER'],[2,'x'],[3,'1.2'],[3,'00.19'],[4,'0'],[4,'2147483648'],[5,'8191'],[5,'999999999999999999999999'],[6,'g'.repeat(128)],[7,'http://github.com/file'],[7,'https://github.com@evil.example/file'],[7,'https://github.com/file%GG'],[8,'x'.repeat(768)],[8,'bad\rtext']]){reset({manifest:signed(fields.map((s,i)=>i===index?value:s))});op(0,0,'error');assert.equal(e.fixture_state(1),0);}
  for(const changed of [(()=>{const b=signed();b[0]^=1;return b;})(),Buffer.alloc(64),Buffer.alloc(4097),signed([...fields,'extra'])]){reset({manifest:changed});op(0,0,'error');}
  for(const options of [{status:404},{status:403},{status:206},{readFail:true},...creators.map(fail=>({fail})),{fail:'sceHttpSetAutoRedirect'},{fail:'sceHttpSetResponseHeaderMaxSize'},{fail:'sceHttpSendRequest'},{fail:'sceHttpSetRecvTimeOut'}]){reset(options);op(0,0,'error');}
@@ -115,12 +116,13 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const largeHeaders=(dest,n)=>{const h='Location: '+dest+'\r\nX-Security: ';return h+'x'.repeat(n-Buffer.byteLength(h)-2)+'\r\n';};
  ready({redirect:u=>u===url?{status:302,headers:largeHeaders(asset,5226)}:u===asset?{status:200,body:pkg}:undefined});
  assert.equal(requests.at(-1),asset);
- available({redirect:u=>u===feed?{status:302,headers:largeHeaders(asset,32768)}:{status:200,body:signed()}});
+ const feedRedirect='https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/manual-v1/redirect-test.h1p';
+ available({redirect:u=>u===feed?{status:302,headers:largeHeaders(feedRedirect,32768)}:{status:200,body:signed()}});
  for(const ignoreHeaderLimit of [false,true]){reset({ignoreHeaderLimit,redirect:()=>({status:302,headers:largeHeaders(asset,32769)})});op(0,0,'error');assert.match(str(e.fixture_message()),/limite de cabecalhos/);assert.equal(requests.length,1);}
  for(const [sendError,message] of [[0x80431073,'limite de cabecalhos'],[0x80431075,'ligacao HTTPS']]){reset({sendError});op(0,0,'error');assert.ok(str(e.fixture_message()).includes(message));}
- available({redirect:u=>u===feed?{status:302,location:'https://release-assets.githubusercontent.com/test/feed'}:{status:200,body:signed()}});
+ available({redirect:u=>u===feed?{status:302,location:feedRedirect}:{status:200,body:signed()}});
  available({redirect:u=>u===feed?{status:302,location:'/test/app/releases/download/v0.1.10/update.h1p'}:{status:200,body:signed()}});
- for(const location of ['http://github.com/insecure','https://github.com.evil.example/update','//evil.example/update','https://evil.example/update']){reset({redirect:()=>({status:302,location})});op(0,0,'error');assert.equal(requests.length,1);}
+ for(const location of ['http://github.com/insecure','https://github.com.evil.example/update','//evil.example/update','https://evil.example/update','https://release-assets.githubusercontent.com/test/feed']){reset({redirect:()=>({status:302,location})});op(0,0,'error');assert.equal(requests.length,1);}
  reset({redirect:()=>({status:302,location:feed})});op(0,0,'error');assert.equal(requests.length,6);
  reset({redirect:()=>({status:302,headers:'Location: '+feed+'\r\nLocation: '+feed+'\r\n'})});op(0,0,'error');
  for(const options of [{noSpace:true},{openFail:true},{writeFail:true},{flushFail:true},{renameFail:true},{payload:pkg.subarray(0,100)},{payload:Buffer.concat([pkg,Buffer.from([0])])},{payload:Buffer.from(pkg).fill(0,10000,10001)}]){available(options);op(1,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(registered,0);assert.equal(files.has('/data/pkg/h1pNoise-update-20.pkg'),false);}
