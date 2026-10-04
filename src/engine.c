@@ -1,4 +1,5 @@
 #include "app.h"
+#include "magnet.h"
 #include <stdarg.h>
 App app;
 typedef struct{char ip[16];int port;} Peer;
@@ -18,16 +19,19 @@ int data_io(uint64_t off,void *buf,size_t size,int writing){
   size_t got=writing?fwrite(p,1,n,fp):fread(p,1,n,fp);int closed=fclose(fp);if(got!=n||closed){result=-1;break;}size-=n;off+=n;p+=n;
  }unlock(&app.io);return size?-1:result;
 }
-int import_torrent(const unsigned char *p,size_t n,char *error,size_t cap){
- lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Pausa o download ou aguarda a verificacao do link antes de trocar de torrent.");return -1;}unlock(&app.mu);
+static int save_torrent(const unsigned char *p,size_t n,char *error,size_t cap){
  Torrent *t=calloc(1,sizeof(Torrent));if(!t){snprintf(error,cap,"Sem memoria.");return -1;}
  if(torrent_parse(t,p,n,error,cap)){free(t);return -1;}unsigned char *complete=calloc(t->pieces,1);if(!complete){torrent_free(t);free(t);return -1;}
  char dir[600],path[700];snprintf(dir,sizeof(dir),"%s/%s",app.root,t->hashhex);make_dir(dir);snprintf(path,sizeof(path),"%s/source.torrent",dir);
  FILE *f=fopen(path,"wb");if(!f){snprintf(error,cap,"Nao foi possivel guardar o torrent no disco.");free(complete);torrent_free(t);free(t);return -1;}
  size_t wr=fwrite(p,1,n,f);int closed=fclose(f);if(wr!=n||closed){snprintf(error,cap,"Erro a guardar o torrent.");free(complete);torrent_free(t);free(t);return -1;}
- lock(&app.mu);torrent_free(&app.torrent);free(app.complete);app.complete=complete;app.torrent=*t;app.loaded=1;app.done=0;app.pause=0;app.install_done=app.install_total=0;strcpy(app.dir,dir);unlock(&app.mu);free(t);
+ lock(&app.mu);torrent_free(&app.torrent);free(app.complete);app.complete=complete;app.torrent=*t;app.loaded=1;app.magnet_pending=0;app.done=0;app.pause=0;app.install_done=app.install_total=0;strcpy(app.dir,dir);unlock(&app.mu);free(t);
  snprintf(path,sizeof(path),"%s/current.txt",app.root);f=fopen(path,"wb");if(f){fputs(app.torrent.hashhex,f);fclose(f);}
  set_status("ready","Torrent recebido. Pronto para verificar e descarregar.");return 0;
+}
+int import_torrent(const unsigned char *p,size_t n,char *error,size_t cap){
+ lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Pausa o download ou aguarda a verificacao do link antes de trocar de torrent.");return -1;}unlock(&app.mu);
+ return save_torrent(p,n,error,cap);
 }
 static int url_parse(const char *s,Url *u){
  memset(u,0,sizeof(*u));if(!strncmp(s,"http://",7)){s+=7;u->port=80;}else if(!strncmp(s,"udp://",6)){s+=6;u->udp=1;u->port=80;}else return -1;
@@ -36,6 +40,7 @@ static int url_parse(const char *s,Url *u){
  snprintf(u->path,sizeof(u->path),"%s",*end?end:"/");return 0;
 }
 static void add_peer(const unsigned char *p){if(npeers==256)return;Peer q;snprintf(q.ip,sizeof(q.ip),"%u.%u.%u.%u",p[0],p[1],p[2],p[3]);q.port=p[4]*256+p[5];if(!q.port||p[0]==0||p[0]>=224)return;for(int i=0;i<npeers;i++)if(q.port==peers[i].port&&!strcmp(q.ip,peers[i].ip))return;peers[npeers++]=q;}
+static void source_peers(void){for(int i=0;i<app.torrent.nsources&&!paused();i++){struct in_addr addr;if(!resolve4(app.torrent.sources[i].host,&addr)){unsigned char p[6];memcpy(p,&addr,4);p[4]=app.torrent.sources[i].port>>8;p[5]=app.torrent.sources[i].port;add_peer(p);}}}
 static int http_body(unsigned char *p,size_t *size){
  unsigned char *end=NULL;for(size_t i=0;i+3<*size;i++)if(!memcmp(p+i,"\r\n\r\n",4)){end=p+i;break;}
  if(!end||end-p>16384||*size<12||memcmp(p,"HTTP/1.",7)||memcmp(p+9,"200",3))return -1;
@@ -50,7 +55,7 @@ static int http_body(unsigned char *p,size_t *size){
 static int tracker_http(Url *u){
  char ih[61],pid[61];for(int i=0;i<20;i++){sprintf(ih+i*3,"%%%02X",app.torrent.hash[i]);sprintf(pid+i*3,"%%%02X",app.peer_id[i]);}
  char req[2600];lock(&app.mu);uint64_t downloaded=app.done;unlock(&app.mu);
- snprintf(req,sizeof(req),"GET %s%cinfo_hash=%s&peer_id=%s&port=6881&uploaded=0&downloaded=%llu&left=%llu&compact=1&numwant=80&event=started HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Harbor/0.1\r\nConnection: close\r\n\r\n",u->path,strchr(u->path,'?')?'&':'?',ih,pid,(unsigned long long)downloaded,(unsigned long long)(app.torrent.total-downloaded),u->host,u->port);
+ snprintf(req,sizeof(req),"GET %s%cinfo_hash=%s&peer_id=%s&port=6881&uploaded=0&downloaded=%llu&left=%llu&compact=1&numwant=80&event=started HTTP/1.1\r\nHost: %s:%d\r\nUser-Agent: Harbor/0.1\r\nConnection: close\r\n\r\n",u->path,strchr(u->path,'?')?'&':'?',ih,pid,(unsigned long long)downloaded,(unsigned long long)(app.magnet_pending?1:app.torrent.total-downloaded),u->host,u->port);
  Sock s=tcp_connect(u->host,u->port,6);if(s==BADSOCK)return -1;unsigned char *buf=malloc(262145);if(!buf){sockclose(s);return -1;}size_t n=0;
  if(send_all(s,req,strlen(req))){free(buf);sockclose(s);return -1;}
  while(n<262144){int k=recv(s,(char*)buf+n,262144-(int)n,0);if(k==0)break;if(k<0){free(buf);sockclose(s);return -1;}n+=k;}sockclose(s);
@@ -65,7 +70,7 @@ static int tracker_udp(Url *u){
  unsigned char req[98]={0},res[4096],tx[4];if(random_bytes(tx,4)){sockclose(s);return -1;}put64(req,0x41727101980ULL);put32(req+8,0);memcpy(req+12,tx,4);
  if(send(s,(char*)req,16,0)!=16){sockclose(s);return -1;}int n=recv(s,(char*)res,sizeof(res),0);if(n<16||be32(res)!=0||memcmp(res+4,tx,4)){sockclose(s);return -1;}
  memcpy(req,res+8,8);put32(req+8,1);memcpy(req+12,tx,4);memcpy(req+16,app.torrent.hash,20);memcpy(req+36,app.peer_id,20);
- lock(&app.mu);uint64_t done=app.done;unlock(&app.mu);put64(req+56,done);put64(req+64,app.torrent.total-done);put64(req+72,0);put32(req+80,2);put32(req+84,0);memcpy(req+88,tx,4);put32(req+92,100);req[96]=0x1a;req[97]=0xe1;
+ lock(&app.mu);uint64_t done=app.done;unlock(&app.mu);put64(req+56,done);put64(req+64,app.magnet_pending?1:app.torrent.total-done);put64(req+72,0);put32(req+80,2);put32(req+84,0);memcpy(req+88,tx,4);put32(req+92,100);req[96]=0x1a;req[97]=0xe1;
  if(send(s,(char*)req,98,0)!=98){sockclose(s);return -1;}n=recv(s,(char*)res,sizeof(res),0);sockclose(s);if(n<20||be32(res)!=1||memcmp(res+4,tx,4)||(n-20)%6)return -1;for(int i=20;i+6<=n;i+=6)add_peer(res+i);return 0;
 }
 static uint32_t piece_len(uint32_t i){uint64_t left=app.torrent.total-(uint64_t)i*app.torrent.piece_size;return left<app.torrent.piece_size?(uint32_t)left:app.torrent.piece_size;}
@@ -123,6 +128,65 @@ static int install_all(void){
  set_status("installed","Instalacao concluida. Os PKG foram mantidos no disco.");return 0;
 }
 static void finished(void){lock(&app.mu);app.busy=0;unlock(&app.mu);}
+/* BEP 10 uses our local ID for incoming messages and the peer's ID for requests. */
+static int metadata_peer(const Peer *peer,unsigned char **info,size_t *size,time_t deadline){
+ Sock s=tcp_connect(peer->ip,peer->port,6);if(s==BADSOCK)return -1;int rc=-1;
+ unsigned char handshake[68]={19},*msg=NULL,*metadata=NULL;size_t mcap=0;uint32_t n=0;
+ memcpy(handshake+1,"BitTorrent protocol",19);handshake[25]=0x10;memcpy(handshake+28,app.torrent.hash,20);memcpy(handshake+48,app.peer_id,20);
+ if(send_all(s,handshake,68)||recv_all(s,handshake,68)||handshake[0]!=19||memcmp(handshake+1,"BitTorrent protocol",19)||memcmp(handshake+28,app.torrent.hash,20)||!(handshake[25]&0x10))goto end;
+ const char *hello="d1:md11:ut_metadatai1eee";unsigned char header[6];put32(header,(uint32_t)strlen(hello)+2);header[4]=20;header[5]=0;
+ if(send_all(s,header,6)||send_all(s,hello,strlen(hello)))goto end;
+ int remote_id=0;uint32_t total=0;time_t peer_deadline=time(NULL)+40;if(peer_deadline>deadline)peer_deadline=deadline;
+ for(int received=0;received<128&&!paused()&&time(NULL)<peer_deadline;received++){
+  if(message(s,&msg,&mcap,&n))goto end;if(n<2||msg[0]!=20||msg[1]!=0)continue;
+  BDoc d;if(bparse(&d,msg+2,n-2))goto end;int id=bget(&d,bget(&d,0,"m"),"ut_metadata"),len=bget(&d,0,"metadata_size");
+  if(id>=0&&len>=0&&d.nodes[id].kind=='i'&&d.nodes[len].kind=='i'&&d.nodes[id].number>0&&d.nodes[id].number<=255&&d.nodes[len].number>0&&d.nodes[len].number<=MAGNET_METADATA_MAX){remote_id=(int)d.nodes[id].number;total=(uint32_t)d.nodes[len].number;}bfree(&d);break;
+ }
+ if(!remote_id||!total||paused())goto end;metadata=malloc(total);if(!metadata)goto end;
+ lock(&app.mu);app.peers=1;unlock(&app.mu);
+ for(uint32_t piece=0;piece<(total+16383)/16384&&!paused();piece++){
+  char req[96];int rn=snprintf(req,sizeof(req),"d8:msg_typei0e5:piecei%uee",piece);put32(header,rn+2);header[5]=(unsigned char)remote_id;
+  if(send_all(s,header,6)||send_all(s,req,rn))goto end;
+  int got=0;for(int received=0;received<128&&!paused()&&time(NULL)<peer_deadline;received++){
+   if(message(s,&msg,&mcap,&n))goto end;if(n<2||msg[0]!=20||msg[1]!=1)continue;
+   BDoc d;size_t used;if(bparse_prefix(&d,msg+2,n-2,&used))goto end;
+   int type=bget(&d,0,"msg_type"),index=bget(&d,0,"piece"),len=bget(&d,0,"total_size");
+   if(type<0||index<0||d.nodes[type].kind!='i'||d.nodes[index].kind!='i'){bfree(&d);goto end;}
+   int64_t kind=d.nodes[type].number,part=d.nodes[index].number;
+   if(kind==2){bfree(&d);goto end;}if(kind!=1){bfree(&d);continue;}
+   uint32_t bytes=total-piece*16384;if(bytes>16384)bytes=16384;
+   if(part!=piece||len<0||d.nodes[len].kind!='i'||d.nodes[len].number!=total||n-2-used!=bytes){bfree(&d);goto end;}
+   memcpy(metadata+piece*16384,msg+2+used,bytes);bfree(&d);got=1;break;
+  }if(!got)goto end;
+ }
+ if(!paused()){unsigned char hash[20];sha1(metadata,total,hash);if(!memcmp(hash,app.torrent.hash,20)){*info=metadata;*size=total;metadata=NULL;rc=0;}}
+end:lock(&app.mu);app.peers=0;unlock(&app.mu);free(metadata);free(msg);sockclose(s);return rc;
+}
+static void *magnet_worker(void *unused){
+ (void)unused;npeers=0;time_t deadline=time(NULL)+180;set_status("metadata","A procurar fontes para obter os dados do magnet.");source_peers();
+ for(int i=0;i<app.torrent.ntrackers&&!paused()&&time(NULL)<deadline;i++){Url u;if(!url_parse(app.torrent.trackers[i],&u)){if(u.udp)tracker_udp(&u);else tracker_http(&u);}}
+ unsigned char *info=NULL,*metainfo=NULL;size_t size=0,meta_size=0;int ok=0;char error[512]="Nao foi possivel obter os dados do magnet. Confirma fontes disponiveis e tenta de novo ou envia o .torrent.";
+ for(int i=0;i<npeers&&!paused()&&time(NULL)<deadline;i++){
+  char progress[256];snprintf(progress,sizeof(progress),"A obter os dados do magnet: fonte %d de %d. Podes cancelar.",i+1,npeers);set_status("metadata",progress);
+  if(!metadata_peer(&peers[i],&info,&size,deadline)){ok=1;break;}
+ }
+ if(paused())set_status("paused","Procura do magnet cancelada. Envia o magnet novamente para tentar de novo.");
+ else if(ok&&!magnet_torrent(&app.torrent,info,size,&metainfo,&meta_size,error,sizeof(error))&&!save_torrent(metainfo,meta_size,error,sizeof(error)))set_status("ready","Magnet recebido e verificado. Escolhe descarregar ou descarregar e instalar.");
+ else set_status("error",error);
+ free(info);free(metainfo);finished();return NULL;
+}
+int begin_magnet(const char *url,size_t n,char *error,size_t cap){
+ Magnet *m=calloc(1,sizeof(*m));if(!m){snprintf(error,cap,"Sem memoria.");return -1;}if(magnet_parse(m,url,n,error,cap)){free(m);return -1;}
+ lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);free(m);snprintf(error,cap,"Pausa a tarefa atual antes de enviar outro magnet.");return -1;}
+ torrent_free(&app.torrent);free(app.complete);app.complete=NULL;app.torrent=m->torrent;app.loaded=0;app.magnet_pending=1;app.busy=1;app.pause=0;app.done=0;app.peers=0;app.install_done=app.install_total=0;app.direct_phase[0]=0;app.direct_message[0]=0;snprintf(app.phase,sizeof(app.phase),"metadata");snprintf(app.message,sizeof(app.message),"A procurar os dados do magnet. Mantem a app aberta.");unlock(&app.mu);free(m);
+ Thread t;if(thread_start(&t,magnet_worker,NULL)){set_status("error","Nao foi possivel iniciar a procura do magnet.");finished();snprintf(error,cap,"Nao foi possivel iniciar a procura do magnet.");return -1;}
+#ifdef _WIN32
+ CloseHandle(t);
+#else
+ pthread_detach(t);
+#endif
+ return 0;
+}
 static void *download_worker(void *unused){
  (void)unused;set_status("checking","A verificar os blocos existentes para retomar o download.");unsigned char *buf=malloc(app.torrent.piece_size);if(!buf){set_status("error","Sem memoria para verificar o torrent.");finished();return NULL;}
  lock(&app.mu);app.done=0;memset(app.complete,0,app.torrent.pieces);unlock(&app.mu);
@@ -130,7 +194,7 @@ static void *download_worker(void *unused){
  char space_error[512];
  if(!paused()&&storage_check(app.root,app.torrent.total-app.done+64*1024*1024ULL,space_error,sizeof(space_error))){set_status("error",space_error);finished();return NULL;}
  while(!paused()&&!is_complete()){
-  npeers=0;set_status("trackers","A procurar peers nos trackers do torrent.");
+  npeers=0;set_status("trackers","A procurar peers nos trackers do torrent.");source_peers();
   for(int i=0;i<app.torrent.ntrackers&&!paused();i++){Url u;if(!url_parse(app.torrent.trackers[i],&u)){if(u.udp)tracker_udp(&u);else tracker_http(&u);}}
   if(!npeers){set_status("waiting","Sem peers acessiveis. Nova tentativa dentro de 60 segundos. Esta versao nao usa DHT.");for(int i=0;i<60&&!paused();i++)sleep_ms(1000);continue;}
   set_status("downloading","A descarregar e verificar blocos. Mantem a aplicacao aberta.");

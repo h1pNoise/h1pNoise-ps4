@@ -56,7 +56,8 @@ static int node(BDoc *d,int depth){
  }else return -1;
  t.end=d->pos;t.next=d->count;d->nodes[id]=t;return id;
 }
-int bparse(BDoc *d,const unsigned char *p,size_t n){memset(d,0,sizeof(*d));d->data=p;d->size=n;if(!n||node(d,0)<0||d->pos!=n){bfree(d);return -1;}return 0;}
+int bparse_prefix(BDoc *d,const unsigned char *p,size_t n,size_t *used){memset(d,0,sizeof(*d));d->data=p;d->size=n;if(!n||node(d,0)<0){bfree(d);return -1;}*used=d->pos;return 0;}
+int bparse(BDoc *d,const unsigned char *p,size_t n){size_t used;if(bparse_prefix(d,p,n,&used))return -1;if(used!=n){bfree(d);return -1;}return 0;}
 void bfree(BDoc *d){free(d->nodes);d->nodes=NULL;d->count=0;}
 int bget(BDoc *d,int id,const char *key){
  if(id<0||id>=d->count||d->nodes[id].kind!='d')return -1;
@@ -102,7 +103,13 @@ int torrent_parse(Torrent *t,const unsigned char *p,size_t n,char *err,size_t ca
  if((t->total+t->piece_size-1)/t->piece_size!=t->pieces)goto bad;
  tracker(t,&d,bget(&d,0,"announce"));int al=bget(&d,0,"announce-list");
  if(al>=0&&d.nodes[al].kind=='l')for(int x=al+1;x<d.nodes[al].next;x++)if(d.nodes[x].kind=='s')tracker(t,&d,x);
- if(!t->ntrackers){why="Sem tracker HTTP/UDP suportado. HTTPS e DHT ainda nao estao implementados.";goto bad;}
+ int sources=bget(&d,0,"h1pNoise-peers");
+ if(sources>=0){if(d.nodes[sources].kind!='l')goto bad;for(int x=sources+1;x<d.nodes[sources].next;x=d.nodes[x].next){
+  if(t->nsources==MAX_SOURCES)goto bad;char host[256];int64_t port=number(&d,bget(&d,x,"port"));if(bstr(&d,bget(&d,x,"host"),host,sizeof(host))||!host[0]||port<1||port>65535)goto bad;
+  for(size_t i=0;host[i];i++)if(!((host[i]>='a'&&host[i]<='z')||(host[i]>='A'&&host[i]<='Z')||(host[i]>='0'&&host[i]<='9')||host[i]=='.'||host[i]=='-'))goto bad;
+  strcpy(t->sources[t->nsources].host,host);t->sources[t->nsources++].port=(int)port;
+ }}
+ if(!t->ntrackers&&!t->nsources){why="Sem tracker HTTP/UDP ou fonte direta suportada. HTTPS e DHT ainda nao estao implementados.";goto bad;}
  sha1(p+d.nodes[info].start,d.nodes[info].end-d.nodes[info].start,t->hash);
  for(int i=0;i<20;i++)sprintf(t->hashhex+2*i,"%02x",t->hash[i]);
  t->hashes=malloc(d.nodes[hashes].len);if(!t->hashes)goto bad;memcpy(t->hashes,p+d.nodes[hashes].body,d.nodes[hashes].len);bfree(&d);return 0;

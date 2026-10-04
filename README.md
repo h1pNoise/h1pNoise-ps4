@@ -1,4 +1,17 @@
-# h1pNoise — PS4 0.1.28
+# h1pNoise — PS4 0.1.29
+
+## Magnets — 0.1.29
+
+A página da consola permite enviar uma ligação magnet, além de ficheiros
+`.torrent` e links PKG. Obtém e verifica os dados do torrent antes de iniciar
+o download; podes cancelar a procura e retomar depois de reabrir. Suporta
+trackers HTTP/UDP e fontes diretas, sem DHT nesta versão. Downloads em
+`/data/pkg`; mantém a app aberta e a PS4 ligada.
+
+Instala o PKG manualmente com a app fechada. A instalação automática das
+versões 0.1.26/0.1.27 continua suspensa. O protótipo de arranque separado
+não está ativo nos PKG desta release. Consulta as
+[notas 0.1.29](RELEASE_NOTES_0.1.29.md) e [os limites dos magnets](MAGNETS.md).
 
 ## Recuperação 0.1.28 — instalar manualmente
 

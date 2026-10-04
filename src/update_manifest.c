@@ -22,7 +22,12 @@ int update_manifest_read(const unsigned char *data,size_t n,const unsigned char 
  if(n<65||n>UPDATE_MANIFEST_MAX||crypto_ed25519_check(data,key,data+64,n-64))return bad(error,cap,"A assinatura da atualizacao nao e valida. Nada foi instalado.");
  char body[UPDATE_MANIFEST_MAX],*fields[9];size_t length=n-64;memcpy(body,data+64,length);body[length]=0;
  size_t start=0;int count=0;for(size_t i=0;i<length;i++){unsigned char c=body[i];if(!c||c=='\r'||(c<32&&c!='\n')||c==127)return bad(error,cap,"Metadados da atualizacao invalidos.");if(c=='\n'){if(count==9)return bad(error,cap,"Campos extra na atualizacao.");fields[count++]=body+start;body[i]=0;start=i+1;}}
- if(count!=9||start!=length||strcmp(fields[0],"H1PNOISE-PS4-UPDATE-1")||strcmp(fields[1],APP_CONTENT_ID))return bad(error,cap,"Esta atualizacao nao pertence a h1pNoise para PS4.");
+#ifdef HARBOR_RUNTIME_UPDATES
+ const char *format="H1PNOISE-PS4-RUNTIME-1";
+#else
+ const char *format="H1PNOISE-PS4-UPDATE-1";
+#endif
+ if(count!=9||start!=length||strcmp(fields[0],format)||strcmp(fields[1],APP_CONTENT_ID))return bad(error,cap,"Esta atualizacao nao pertence a h1pNoise para PS4.");
  size_t vlen=strlen(fields[2]);if(!vlen||vlen>=sizeof(out->version))return bad(error,cap,"Versao invalida.");
  for(size_t i=0;i<vlen;i++)if((fields[2][i]<'0'||fields[2][i]>'9')&&fields[2][i]!='.')return bad(error,cap,"Versao invalida.");
  if(strlen(fields[3])!=5||fields[3][2]!='.'||fields[3][0]<'0'||fields[3][0]>'9'||fields[3][1]<'0'||fields[3][1]>'9'||fields[3][3]<'0'||fields[3][3]>'9'||fields[3][4]<'0'||fields[3][4]>'9')return bad(error,cap,"Versao PS4 invalida.");
@@ -32,8 +37,9 @@ int update_manifest_read(const unsigned char *data,size_t n,const unsigned char 
  if(!update_https_url(fields[7])||strlen(fields[8])>=sizeof(out->notes))return bad(error,cap,"Endereco ou notas da atualizacao invalidos.");
  out->build=(uint32_t)build;out->size=size;strcpy(out->version,fields[2]);strcpy(out->sfo,fields[3]);strcpy(out->url,fields[7]);strcpy(out->notes,fields[8]);return 0;
 }
-static uint32_t be(const unsigned char *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
 static uint32_t le(const unsigned char *p){return (uint32_t)p[3]<<24|(uint32_t)p[2]<<16|(uint32_t)p[1]<<8|p[0];}
+#ifndef HARBOR_RUNTIME_UPDATES
+static uint32_t be(const unsigned char *p){return (uint32_t)p[0]<<24|(uint32_t)p[1]<<16|(uint32_t)p[2]<<8|p[3];}
 static unsigned le16(const unsigned char *p){return p[0]|p[1]<<8;}
 static int field(const unsigned char *p,size_t n,const char *key,const char *value){
  if(n<20||le(p)!=0x46535000)return 0;uint32_t keys=le(p+8),vals=le(p+12),count=le(p+16);if(count>(n-20)/16||keys>n||vals>n)return 0;int found=0;
@@ -41,11 +47,20 @@ static int field(const unsigned char *p,size_t n,const char *key,const char *val
   if(!strcmp((const char*)p+k,key)){if(found++||le16(e+2)!=0x204||length!=strlen(value)+1||memcmp(p+v,value,length))return 0;}}
  return found==1;
 }
+#endif
 int update_pkg_metadata(const unsigned char *p,size_t n,uint64_t size,const UpdateManifest *m){
+#ifdef HARBOR_RUNTIME_UPDATES
+ /* The signed manifest binds this executable to our title/version. No raw
+    ELF or external title is accepted. SELF header file size is uint64 LE. */
+ if(n<8192||size!=m->size||le(p)!=0x1d3d154f||p[6]!=1||p[7]!=0x12)return -1;
+ uint64_t declared=(uint64_t)le(p+0x10)|((uint64_t)le(p+0x14)<<32);
+ return declared==size?0:-1;
+#else
  if(n<8192||size!=m->size||memcmp(p,"\x7f" "CNT",4)||memcmp(p+0x40,APP_CONTENT_ID,37)||be(p+0x74)!=0x1a)return -1;
  if(((uint64_t)be(p+0x430)<<32|be(p+0x434))!=size)return -1;
  uint32_t entries=be(p+0x10),table=be(p+0x18);if(table>n||entries>(n-table)/32)return -1;int found=0;
  for(uint32_t i=0;i<entries;i++){const unsigned char *e=p+table+i*32;if(be(e)!=0x1000)continue;if(found++)return -1;uint32_t off=be(e+16),len=be(e+20);if(off>n||len>n-off)return -1;
   if(!field(p+off,len,"TITLE_ID",APP_TITLE_ID)||!field(p+off,len,"CONTENT_ID",APP_CONTENT_ID)||!field(p+off,len,"APP_VER",m->sfo)||!field(p+off,len,"CATEGORY","gd"))return -1;}
  return found==1?0:-1;
+#endif
 }

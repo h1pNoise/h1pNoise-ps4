@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let code='',connected=false,polling=false,pending='',selectedFile=null,lastStatus=null,previous=null,toastTimer=0,filesKey='',qrCode='',editingCode=false;
 let qrOpen=!matchMedia('(max-width: 680px)').matches;
-const phases={idle:'Sem atividade',ready:'Pronto',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
+const phases={idle:'Sem atividade',ready:'Pronto',metadata:'A obter dados do magnet',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
 const size=n=>n>=1e9?(n/1e9).toFixed(2)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(1)+' kB':Math.max(0,n)+' B';
 const duration=s=>s>=3600?Math.ceil(s/3600)+' h':s>=60?Math.ceil(s/60)+' min':Math.max(1,Math.ceil(s))+' s';
 function text(id,s){if($(id).textContent!==s)$(id).textContent=s;}
@@ -18,24 +18,25 @@ async function api(path,body,post=false){
  }catch(e){if(e.name==='AbortError')throw Error('A consola demorou a responder. Confirma o estado antes de repetir o pedido.');throw e;}finally{clearTimeout(timer);}
 }
 function selectMode(mode,focus=false){
- for(const name of ['torrent','link']){const active=name===mode;$('tab-'+name).setAttribute('aria-selected',String(active));$('tab-'+name).tabIndex=active?0:-1;$('panel-'+name).hidden=!active;}
+ for(const name of ['torrent','magnet','link']){const active=name===mode;$('tab-'+name).setAttribute('aria-selected',String(active));$('tab-'+name).tabIndex=active?0:-1;$('panel-'+name).hidden=!active;}
  if(focus)$('tab-'+mode).focus();
 }
-for(const name of ['torrent','link']){
+for(const name of ['torrent','magnet','link']){
  $('tab-'+name).onclick=()=>selectMode(name);
- $('tab-'+name).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();selectMode(e.key==='Home'?'torrent':e.key==='End'?'link':name==='torrent'?'link':'torrent',true);}};
+ $('tab-'+name).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const modes=['torrent','magnet','link'],index=modes.indexOf(name);selectMode(e.key==='Home'?modes[0]:e.key==='End'?modes[2]:modes[(index+(e.key==='ArrowRight'?1:2))%3],true);}};
 }
 function controls(){
  const d=lastStatus||{},u=d.update||{},blocked=!connected||d.busy||d.directBusy||u.busy||u.task>=0||!!pending;
- $('upload').disabled=blocked||!selectedFile;$('reset').disabled=blocked||!d.loaded;
+ $('upload').disabled=blocked||!selectedFile;$('reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
+ $('send-magnet').disabled=blocked||!$('magnet-url').value.trim();
  $('send-link').disabled=blocked||!d.directSupported||!$('pkg-url').value.trim();
  $('start').disabled=$('download').disabled=blocked||!d.loaded;
  $('pause').disabled=!connected||!!pending||!d.busy||d.phase==='installing';
  $('install').disabled=blocked||!d.loaded||d.done!==d.total||d.phase==='installed';
- $('confirm-reset').disabled=blocked||!d.loaded;
+ $('confirm-reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
  $('update-check').disabled=blocked||!u.supported;
  $('update-download').disabled=blocked||!u.supported||!u.available||u.ready;
- $('update-install').disabled=$('update-confirm-install').disabled=true;
+ $('update-install').disabled=$('update-confirm-install').disabled=blocked||u.mode!=='runtime'||!u.ready;
 }
 function selectFile(file){
  text('upload-error','');
@@ -49,6 +50,7 @@ $('torrent').onchange=()=>selectFile($('torrent').files[0]);
 for(const event of ['dragenter','dragover'])$('drop').addEventListener(event,e=>{e.preventDefault();$('drop').classList.add('dragging');});
 for(const event of ['dragleave','drop'])$('drop').addEventListener(event,e=>{e.preventDefault();$('drop').classList.remove('dragging');});
 $('drop').addEventListener('drop',e=>{if(e.dataTransfer.files.length!==1){text('upload-error','Escolhe apenas um torrent de cada vez.');return;}selectFile(e.dataTransfer.files[0]);});
+$('magnet-url').oninput=()=>{text('magnet-error','');controls();};
 $('pkg-url').oninput=()=>{text('link-error','');controls();};
 function qrVisibility(){
  $('qrbox').hidden=!connected||!qrOpen||qrCode!==code;
@@ -68,25 +70,28 @@ function render(d){
  lastStatus=d;connected=true;text('connection',d.directSupported?'PS4 ligada':'Modo de teste');badge('connection-badge','online');
  $('pair-form').hidden=!editingCode;
  $('pairing').classList.toggle('connected',!editingCode);$('connection-bottom').hidden=false;
- $('empty').hidden=!!d.loaded;$('torrent-progress').hidden=!d.loaded;
- text('phase-label',d.loaded?(phases[d.phase]||'A aguardar'):'Sem atividade');
- badge('phase-badge',d.phase==='error'?'error':d.phase==='paused'||d.phase==='waiting'?'warn':d.busy?'online busy':d.loaded?'online':'');
+ const hasTransfer=!!d.loaded||!!d.magnetPending;
+ $('empty').hidden=hasTransfer;$('torrent-progress').hidden=!hasTransfer;
+ text('phase-label',hasTransfer?(phases[d.phase]||'A aguardar'):'Sem atividade');
+ badge('phase-badge',d.phase==='error'?'error':d.phase==='paused'||d.phase==='waiting'?'warn':d.busy?'online busy':hasTransfer?'online':'');
  text('name',d.name||'À espera de um torrent');
  const installing=d.phase==='installing',total=installing?d.installTotal:d.total,done=installing?d.installDone:d.done,pct=total?Math.min(100,100*done/total):0;
  text('percent',d.loaded?pct.toFixed(1)+'%':'—');$('progress').value=pct;
- text('bytes',!d.loaded?'Nenhum torrent carregado':installing&&!total?'A preparar a instalação…':size(done)+' / '+size(total));
+ text('bytes',d.magnetPending?'A obter os dados do torrent…':!d.loaded?'Nenhum torrent carregado':installing&&!total?'A preparar a instalação…':size(done)+' / '+size(total));
  const now=performance.now();let rate=0;
  if(d.phase==='downloading'&&previous&&previous.phase===d.phase&&previous.name===d.name&&d.done>=previous.done&&now>previous.time)rate=(d.done-previous.done)*1000/(now-previous.time);
  previous={time:now,done:d.done,phase:d.phase,name:d.name};
- text('speed',rate>0?size(rate)+'/s':'—');text('peers',d.loaded?String(d.peers):'—');text('eta',rate>0&&d.total>d.done?duration((d.total-d.done)/rate):'—');
+ text('speed',rate>0?size(rate)+'/s':'—');text('peers',hasTransfer?String(d.peers):'—');text('eta',rate>0&&d.total>d.done?duration((d.total-d.done)/rate):'—');
  text('message',d.message||'');$('message').classList.toggle('error',d.phase==='error');
- const count=(d.files||[]).length;text('file-count',count+' '+(count===1?'ficheiro PKG':'ficheiros PKG'));text('files-summary','Ficheiros incluídos ('+count+')');
+ const count=(d.files||[]).length;text('file-count',d.magnetPending?'Os ficheiros aparecem após obter os dados':count+' '+(count===1?'ficheiro PKG':'ficheiros PKG'));text('files-summary','Ficheiros incluídos ('+count+')');
+ $('files').parentElement.hidden=!!d.magnetPending;
  const key=JSON.stringify(d.files||[]);
  if(filesKey!==key){filesKey=key;$('files').replaceChildren();for(const f of d.files||[]){const li=document.createElement('li'),name=document.createElement('b'),bytes=document.createElement('span');name.textContent=f.name;bytes.textContent=size(f.size);li.append(name,bytes);$('files').append(li);}}
  const complete=d.loaded&&d.total>0&&d.done===d.total;
- $('start').hidden=$('download').hidden=d.busy||complete;$('pause').hidden=!d.busy||installing;
+ $('start').hidden=$('download').hidden=d.busy||complete||!!d.magnetPending;$('pause').hidden=!d.busy||installing;
  $('install').hidden=!complete||d.busy||d.phase==='installed';
  text('start',d.phase==='paused'?'Retomar e instalar':'Descarregar e instalar');text('download',d.phase==='paused'?'Só retomar':'Só descarregar');
+ if(d.magnetPending)text('pause','Cancelar procura');else text('pause','Pausar');
  const unknown=d.free===null||d.free===undefined;text('space-value',unknown?'Indisponível':size(d.free));$('space-value').classList.toggle('unknown',unknown);
  text('space',unknown?(d.allowUnknownSpace?'Medição indisponível. Podes descarregar; confirma o espaço no dispositivo.':'Não foi possível medir o espaço disponível.'):'A instalação precisa de espaço adicional ao download.');
  text('storage-path','Destino: '+(d.storagePath||'/data/pkg'));
@@ -103,7 +108,10 @@ function render(d){
  text('update-message',u.message||'As atualizações da aplicação requerem uma PS4 real.');
  text('update-notes',u.notes||'');$('update-notes').hidden=!u.available||!u.notes;
  $('update-download').hidden=!u.available||u.ready||u.busy||u.task>=0;
- $('update-install').hidden=true;$('update-confirm').hidden=true;
+ $('update-install').hidden=u.mode!=='runtime'||!u.ready||u.busy; $('update-confirm').hidden=true;
+ text('update-download',u.mode==='runtime'?'Atualizar agora':'Descarregar atualização');
+ text('update-install','Reiniciar com a nova versão');
+ text('update-footnote',u.mode==='runtime'?'Também podes carregar X no comando da PS4. A app descarrega, verifica e reinicia.':'A instalação desta versão é manual.');
  $('update-progress').hidden=$('update-bytes').hidden=!u.size||(!u.ready&&u.phase!=='downloading');
  $('update-progress').value=u.size?Math.min(100,100*u.done/u.size):0;text('update-bytes',size(u.done||0)+' / '+size(u.size||0));
  controls();
@@ -141,6 +149,13 @@ $('upload').onclick=async()=>{
  if(!selectedFile||!connected||$('upload').disabled)return;
  if(await action('torrent',selectedFile,'upload-error')){toast('Torrent recebido. Pronto para começar.');$('transfer').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
 };
+$('send-magnet').onclick=async()=>{
+ if($('send-magnet').disabled||!connected)return;
+ const url=$('magnet-url').value.trim();
+ if(!url.startsWith('magnet:?')){text('magnet-error','Cola uma ligação que comece por magnet:?');return;}
+ if(new TextEncoder().encode(url).length>=32768){text('magnet-error','O magnet é demasiado longo.');return;}
+ if(await action('magnet',url,'magnet-error')){toast('Magnet recebido. A procurar os dados do torrent.');$('transfer').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
+};
 $('send-link').onclick=async()=>{
  if($('send-link').disabled||!connected)return;
  const url=$('pkg-url').value.trim();let parsed;try{parsed=new URL(url);}catch(_){}
@@ -152,14 +167,15 @@ $('reset').onclick=()=>{$('reset-confirm').hidden=false;$('confirm-reset').focus
 $('cancel-reset').onclick=()=>{$('reset-confirm').hidden=true;$('reset').focus();};
 $('confirm-reset').onclick=async()=>{
  if($('confirm-reset').disabled)return;
- if(await action('reset')){$('reset-confirm').hidden=true;selectedFile=null;$('torrent').value='';$('drop').classList.remove('selected');text('selected-name','Escolhe o teu ficheiro .torrent');text('selected-size','Arrasta para aqui ou procura um ficheiro');controls();toast('Pronto para outro torrent.');}
+ if(await action('reset')){$('reset-confirm').hidden=true;selectedFile=null;$('torrent').value='';$('magnet-url').value='';text('magnet-error','');$('drop').classList.remove('selected');text('selected-name','Escolhe o teu ficheiro .torrent');text('selected-size','Arrasta para aqui ou procura um ficheiro');controls();toast('Pronto para outra transferência.');}
 };
 $('update-check').onclick=async()=>{if(!$('update-check').disabled)await action('update/check',null,'update-error');};
 $('update-download').onclick=async()=>{if(!$('update-download').disabled)await action('update/download',null,'update-error');};
-$('update-install').onclick=()=>{};
+$('update-install').onclick=async()=>{if(!$('update-install').disabled)await action('update/install',null,'update-error');};
 $('update-cancel').onclick=()=>{$('update-confirm').hidden=true;};
 $('update-confirm-install').onclick=()=>{};
 const pairingCode=new URLSearchParams(location.hash.slice(1)).get('code');
 if(pairingCode&&/^[0-9]{4}$/.test(pairingCode)){$('code').value=pairingCode;history.replaceState(null,'',location.pathname+location.search);$('connect').onclick();}
 setInterval(refresh,2500);
+
 

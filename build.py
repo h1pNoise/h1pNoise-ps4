@@ -25,13 +25,15 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument('--host',action='store_true')
     p.add_argument('--shadps4',action='store_true',help='Emulator-only socket ABI compatibility; PKG installation disabled')
+    p.add_argument('--runtime',action='store_true',help='PS4 bootstrap and signed executable updates; never replace the running PKG')
     p.add_argument('--sdk',default=os.getenv('OO_PS4_TOOLCHAIN'))
     p.add_argument('--llvm',default=os.getenv('LLVM_BIN'))
     p.add_argument('--zig',default=os.getenv('ZIG_EXE','zig'))
     a=p.parse_args();embed()
     if a.host and a.shadps4:p.error('--host and --shadps4 are separate targets')
+    if a.runtime and (a.host or a.shadps4):p.error('--runtime requires a real PS4 target')
     build=ROOT/('build-shadps4' if a.shadps4 else 'build');build.mkdir(exist_ok=True)
-    sources=[ROOT/'src'/x for x in ['core.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
+    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
     if a.host:
         os.environ.setdefault('ZIG_GLOBAL_CACHE_DIR',str(build/'zig-global'))
         os.environ.setdefault('ZIG_LOCAL_CACHE_DIR',str(build/'zig-local'))
@@ -45,15 +47,25 @@ def main():
     sources.extend([ROOT/'src/ps4.c',ROOT/'src/ps4_remote.c',ROOT/'src/ps4_storage.c',ROOT/'src/display.c']);objects=[]
     if not a.shadps4:
         sources.extend([ROOT/'src/ps4_user.c',ROOT/'src/ps4_bgft.c',ROOT/'src/installer_access.c',ROOT/'src/vendor/libjbc/jailbreak.c',ROOT/'src/vendor/libjbc/kernelrw.c'])
+    if a.runtime:sources.append(ROOT/'src/runtime_update.c')
     for source in sources:
         obj=build/(source.stem+'.o');objects.append(obj)
-        defines=['-D__ORBIS__']+(['-DHARBOR_SHADPS4'] if a.shadps4 else [])
+        defines=['-D__ORBIS__']+(['-DHARBOR_SHADPS4'] if a.shadps4 else [])+(['-DHARBOR_RUNTIME_UPDATES'] if a.runtime else [])
         run([llvm/'clang.exe','--target=x86_64-pc-freebsd12-elf',*defines,'-O2','-fPIC','-funwind-tables','-Wall','-Wextra','-Wno-misleading-indentation','-isysroot',sdk,'-isystem',sdk/'include','-c',source,'-o',obj])
     elf=build/'harbor.elf'
-    run([llvm/'ld.lld.exe','-m','elf_x86_64','-pie','--script',sdk/'link.x','--eh-frame-hdr','-L'+str(sdk/'lib'),*objects,sdk/'lib/crt1.o','-lc','-lkernel','-lSceNet','-lSceNetCtl','-lSceSysmodule','-lSceRandom','-lSceVideoOut','-lSceBgft','-lSceAppInstUtil','-lSceSystemService','-lSceHttp','-lSceSsl','-lSceUserService','-o',elf])
+    run([llvm/'ld.lld.exe','-m','elf_x86_64','-pie','--script',sdk/'link.x','--eh-frame-hdr','-L'+str(sdk/'lib'),*objects,sdk/'lib/crt1.o','-lc','-lkernel','-lSceNet','-lSceNetCtl','-lSceSysmodule','-lSceRandom','-lSceVideoOut','-lSceBgft','-lSceAppInstUtil','-lSceSystemService','-lSceHttp','-lSceSsl','-lSceUserService',*(['-lScePad'] if a.runtime else []),'-o',elf])
     pkg=build/'package';(pkg/'sce_sys/about').mkdir(parents=True,exist_ok=True);(pkg/'sce_module').mkdir(exist_ok=True)
     tools=sdk/'bin/windows'
-    run([tools/'create-fself.exe','-in',elf,'-out',build/'harbor.oelf','--eboot',pkg/'eboot.bin','--paid','0x3800000000000011'])
+    run([tools/'create-fself.exe','-in',elf,'-out',build/'harbor.oelf','--eboot',pkg/('h1pNoise.self' if a.runtime else 'eboot.bin'),'--paid','0x3800000000000011'])
+    if a.runtime:
+        bootstrap=[]
+        for name in ['bootstrap.c','runtime_update.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']:
+            source=ROOT/'src'/name;obj=build/('boot-'+source.stem+'.o');bootstrap.append(obj)
+            run([llvm/'clang.exe','--target=x86_64-pc-freebsd12-elf','-D__ORBIS__','-DHARBOR_RUNTIME_UPDATES','-O2','-fPIC','-funwind-tables','-Wall','-Wextra','-Wno-misleading-indentation','-isysroot',sdk,'-isystem',sdk/'include','-c',source,'-o',obj])
+        bootelf=build/'bootstrap.elf'
+        run([llvm/'ld.lld.exe','-m','elf_x86_64','-pie','--script',sdk/'link.x','--eh-frame-hdr','-L'+str(sdk/'lib'),*bootstrap,sdk/'lib/crt1.o','-lc','-lkernel','-lSceSystemService','-o',bootelf])
+        run([tools/'create-fself.exe','-in',bootelf,'-out',build/'bootstrap.oelf','--eboot',pkg/'eboot.bin','--paid','0x3800000000000011'])
+        shutil.copy2(pkg/'h1pNoise.self',build/('h1pNoise-'+VERSION['APP_VERSION']+'.self'))
     for name in ['libc.prx','libSceFios2.prx']:
         shutil.copy2(sdk/'samples/hello_world/sce_module'/name,pkg/'sce_module'/name)
     shutil.copy2(sdk/'samples/hello_world/sce_sys/about/right.sprx',pkg/'sce_sys/about/right.sprx')
@@ -67,6 +79,7 @@ def main():
     fields={'APP_TYPE':(1,4),'APP_VER':(VERSION['APP_SFO_VERSION'],8),'ATTRIBUTE':(0,4),'CATEGORY':('gd',4),'CONTENT_ID':(content,48),'DOWNLOAD_DATA_SIZE':(0,4),'SYSTEM_VER':(0,4),'TITLE':(title,128),'TITLE_ID':(VERSION['APP_TITLE_ID'],12),'VERSION':(VERSION['APP_SFO_VERSION'],8)}
     for key,(value,size) in fields.items():run([tool,'sfo_setentry',sfo,key,'--type','Integer' if isinstance(value,int) else 'Utf8','--maxsize',size,'--value',value])
     files='eboot.bin sce_sys/about/right.sprx sce_sys/param.sfo sce_sys/icon0.png sce_module/libc.prx sce_module/libSceFios2.prx'
+    if a.runtime:files+=' h1pNoise.self'
     run([tools/'create-gp4.exe','-out','pkg.gp4','--content-id='+content,'--files',files],cwd=pkg)
     run([tool,'pkg_build','pkg.gp4','.'],cwd=pkg)
     output='h1pNoise-'+VERSION['APP_VERSION']+('-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')

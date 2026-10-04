@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 root=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser()
+p.add_argument('--runtime',action='store_true')
 for key in ['llvm','sdk','node','pkg']:p.add_argument('--'+key,required=True,type=Path)
 a=p.parse_args();a.llvm=a.llvm.resolve();a.sdk=a.sdk.resolve();a.pkg=a.pkg.resolve();a.node=a.node.resolve()
 key=Ed25519PrivateKey.generate()
@@ -26,7 +27,9 @@ static const unsigned char UPDATE_PUBLIC_KEY[32]={'''+','.join(str(b) for b in p
 #define APP_CONTENT_ID "IV0000-HBRW00001_00-HARBORPS40000000"
 ''')
 sources=['updater.c','update_http.c','update_platform.c','ps4_user.c','ps4_bgft.c','installer_access.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
+if a.runtime:sources.extend(['runtime_update.c','bootstrap.c'])
 cmd=[a.llvm/'clang.exe','--target=wasm64','-O1','-nostdlib','-D__ORBIS__','-isystem',a.sdk/'include','-include',config,'-Wl,--no-entry','-Wl,--export-all','-Wl,--export-table','-Wl,--allow-undefined','-Wl,-z,stack-size=262144',*[root/'src'/s for s in sources],root/'tests/updater_fixture.c','-o',build/'updater-test.wasm']
+if a.runtime:cmd[2:2]=['-DHARBOR_RUNTIME_UPDATES','-DHARBOR_RUNTIME_TEST']
 subprocess.run([str(x) for x in cmd],check=True)
-try:subprocess.run([str(a.node),str(root/'tests/updater_wasm.js'),str(build/'updater-test.wasm'),str(a.pkg),str(test_key)],check=True)
+try:subprocess.run([str(a.node),str(root/('tests/runtime_wasm.js' if a.runtime else 'tests/updater_wasm.js')),str(build/'updater-test.wasm'),str(a.pkg),str(test_key)],check=True)
 finally:test_key.unlink(missing_ok=True)

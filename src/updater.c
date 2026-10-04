@@ -3,12 +3,21 @@
 #include "update_config.h"
 #include "version.h"
 #include "vendor/monocypher-ed25519.h"
+#ifdef HARBOR_RUNTIME_UPDATES
+#include "runtime_update.h"
+#endif
 typedef struct {unsigned char data[UPDATE_MANIFEST_MAX];size_t used;} ManifestBuffer;
 typedef struct {FILE *file;crypto_sha512_ctx hash;uint64_t done;} Download;
 static void status(const char *phase,const char *message){lock(&app.mu);snprintf(app.update.phase,sizeof(app.update.phase),"%s",phase);snprintf(app.update.message,sizeof(app.update.message),"%s",message);unlock(&app.mu);}
 static int manifest_sink(const unsigned char *p,size_t n,void *arg){ManifestBuffer *b=arg;if(n>sizeof(b->data)-b->used)return -1;memcpy(b->data+b->used,p,n);b->used+=n;return 0;}
 static int file_sink(const unsigned char *p,size_t n,void *arg){Download *d=arg;if(fwrite(p,1,n,d->file)!=n)return -1;crypto_sha512_update(&d->hash,p,n);d->done+=n;lock(&app.mu);app.update.done=d->done;unlock(&app.mu);return 0;}
-static void path_for(uint32_t build,char out[700]){snprintf(out,700,"%s/h1pNoise-update-%u.pkg",app.root,build);}
+static void path_for(uint32_t build,char out[700]){
+#ifdef HARBOR_RUNTIME_UPDATES
+ runtime_path(build,"self",out);
+#else
+ snprintf(out,700,"%s/h1pNoise-update-%u.pkg",app.root,build);
+#endif
+}
 static int verify_file(const char *path,const UpdateManifest *m,char *error,size_t cap){
  FILE *f=fopen(path,"rb");if(!f){snprintf(error,cap,"A atualizacao descarregada ja nao esta disponivel.");return -1;}
  unsigned char buffer[32768],digest[64];crypto_sha512_ctx hash;crypto_sha512_init(&hash);uint64_t total=0;size_t n;
@@ -31,14 +40,25 @@ static void *worker(void *arg){
  int op=(int)(intptr_t)arg,rc=-1;char error[512]={0};UpdateManifest m;
  if(op==0){
   ManifestBuffer b={0};if(update_http_get(UPDATE_FEED_URL,sizeof(b.data),manifest_sink,&b,error,sizeof(error))||update_manifest_read(b.data,b.used,UPDATE_PUBLIC_KEY,&m,error,sizeof(error)))goto done;
-  if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status("current","Tens a versao mais recente publicada.");rc=0;goto done;}
+  if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status("current",m.build<APP_BUILD?"Nao ha uma atualizacao mais recente neste canal.":"Tens a versao mais recente publicada.");rc=0;goto done;}
   if(strcmp(m.sfo,APP_SFO_VERSION)<=0){snprintf(error,sizeof(error),"A versao PS4 publicada nao e mais recente.");goto done;}
-  lock(&app.mu);app.update.manifest=m;app.update.available=1;app.update.ready=0;int notify=app.update.notified!=m.build;app.update.notified=m.build;unlock(&app.mu);
-  char msg[180];snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Abre Atualizacoes no telemovel.",m.version);status("available",msg);if(notify)update_notify(msg);rc=0;
+  lock(&app.mu);app.update.manifest=m;app.update.available=1;app.update.ready=0;memcpy(app.update.signed_manifest,b.data,b.used);app.update.signed_size=b.used;int notify=app.update.notified!=m.build;app.update.notified=m.build;unlock(&app.mu);
+  char msg[180];
+#ifdef HARBOR_RUNTIME_UPDATES
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Carrega X no comando para atualizar.",m.version);
+#else
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarrega o PKG e instala manualmente com a app fechada.",m.version);
+#endif
+  status("available",msg);if(notify)update_notify(msg);rc=0;
  }else{
   lock(&app.mu);m=app.update.manifest;unlock(&app.mu);char path[700];path_for(m.build,path);
   if(op==1){
+#ifdef HARBOR_RUNTIME_UPDATES
+   mkdir("/data/harbor",0777);mkdir(RUNTIME_ROOT,0777);
+   if(storage_check(RUNTIME_ROOT,m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
+#else
    if(storage_check(app.root,m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
+#endif
    char part[720];snprintf(part,sizeof(part),"%s.part",path);Download d={0};d.file=fopen(part,"wb");if(!d.file){snprintf(error,sizeof(error),"Nao foi possivel criar o ficheiro da atualizacao.");goto done;}
    crypto_sha512_init(&d.hash);int net=update_http_get(m.url,m.size,file_sink,&d,error,sizeof(error));int io=fflush(d.file);if(fclose(d.file))io=-1;
    unsigned char digest[64];crypto_sha512_final(&d.hash,digest);
@@ -50,11 +70,19 @@ static void *worker(void *arg){
 #endif
    if(rename(part,path)){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao verificada.");goto done;}
    lock(&app.mu);app.update.ready=1;unlock(&app.mu);
+#ifdef HARBOR_RUNTIME_UPDATES
+   if(runtime_store_manifest(app.update.signed_manifest,app.update.signed_size,m.build,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
+   /* Download requested by X or the page includes activation. The installed
+      PKG and the previous working executable are never removed. */
+   int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
+   if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");update_notify("h1pNoise: a abrir a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
+#else
    char msg[960];snprintf(msg,sizeof(msg),"Atualizacao descarregada e verificada em %s. Fecha a h1pNoise e instala o PKG manualmente.",path);status("ready",msg);rc=0;
+#endif
   }else{
    if(verify_file(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));lock(&app.mu);app.update.task=task;unlock(&app.mu);
-   if(!rc){status("queued","Atualizacao enviada ao sistema. Fecha a h1pNoise e acompanha em Notificacoes > Transferencias. Reabre depois de concluir.");update_notify("h1pNoise: fecha a app para concluir a atualizacao nas Transferencias.");}
+   if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
   }
  }
 done:

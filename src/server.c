@@ -3,6 +3,12 @@
 #include "web.h"
 #include "pairing.h"
 #include "version.h"
+#include "magnet.h"
+#ifdef HARBOR_RUNTIME_UPDATES
+#define UPDATE_MODE "runtime"
+#else
+#define UPDATE_MODE "manual"
+#endif
 #if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
 #define STORAGE_UNCHECKED "true"
 #else
@@ -27,13 +33,13 @@ static int header(const char *h,const char *name,char *out,size_t cap){
 }
 static void status_response(Sock s){
  char *out=malloc(160000);if(!out){fail(s,500,"Sem memoria.");return;}char name[1600],msg[1800];size_t n;
- lock(&app.mu);jsonstr(name,sizeof(name),app.loaded?app.torrent.name:"");jsonstr(msg,sizeof(msg),app.message);
+ lock(&app.mu);jsonstr(name,sizeof(name),(app.loaded||app.magnet_pending)?app.torrent.name:"");jsonstr(msg,sizeof(msg),app.message);
  n=snprintf(out,160000,"{\"name\":%s,\"message\":%s,\"phase\":\"%s\",\"busy\":%s,\"loaded\":%s,\"done\":%llu,\"total\":%llu,\"peers\":%d,\"installDone\":%llu,\"installTotal\":%llu,\"files\":[",name,msg,app.phase,app.busy?"true":"false",app.loaded?"true":"false",(unsigned long long)app.done,(unsigned long long)app.torrent.total,app.peers,(unsigned long long)app.install_done,(unsigned long long)app.install_total);
  if(app.loaded)for(int i=0;i<app.torrent.nfiles;i++){char f[3200];jsonstr(f,sizeof(f),app.torrent.files[i].name);n+=snprintf(out+n,160000-n,"%s{\"name\":%s,\"size\":%llu}",i?",":"",f,(unsigned long long)app.torrent.files[i].size);}
  char direct_msg[3200];jsonstr(direct_msg,sizeof(direct_msg),app.direct_message);
- n+=snprintf(out+n,160000-n,"],\"directSupported\":%s,\"directBusy\":%s,\"directTask\":%d,\"directMessage\":%s,\"directPhase\":\"%s\"",remote_pkg_supported()?"true":"false",app.direct_busy?"true":"false",app.direct_task,direct_msg,app.direct_phase[0]?app.direct_phase:"idle");
+ n+=snprintf(out+n,160000-n,"],\"magnetPending\":%s,\"directSupported\":%s,\"directBusy\":%s,\"directTask\":%d,\"directMessage\":%s,\"directPhase\":\"%s\"",app.magnet_pending?"true":"false",remote_pkg_supported()?"true":"false",app.direct_busy?"true":"false",app.direct_task,direct_msg,app.direct_phase[0]?app.direct_phase:"idle");
  char update_message[3200],notes[4800],update_version[200];jsonstr(update_message,sizeof(update_message),app.update.message);jsonstr(notes,sizeof(notes),app.update.manifest.notes);jsonstr(update_version,sizeof(update_version),app.update.manifest.version);
- n+=snprintf(out+n,160000-n,",\"update\":{\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
+ n+=snprintf(out+n,160000-n,",\"update\":{\"mode\":\"" UPDATE_MODE "\",\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
  unlock(&app.mu);
  uint64_t available=0;char free_json[32]="null",storage_path[3200];int known=!free_bytes(app.root,&available);
  if(known)snprintf(free_json,sizeof(free_json),"%llu",(unsigned long long)available);
@@ -69,6 +75,8 @@ static void handle(Sock s){
  if(!strcmp(path,"/api/pkg-url")){
   if(!bytes||bytes>=PKG_URL_CAP){fail(s,400,"Cola um link direto HTTP ou HTTPS com menos de 2048 caracteres.");return;}
   char url[PKG_URL_CAP];if(recv_all(s,url,bytes))return;url[bytes]=0;rc=begin_remote_pkg(url,bytes,error,sizeof(error));
+ }else if(!strcmp(path,"/api/magnet")){
+  if(!bytes||bytes>=MAGNET_CAP){fail(s,400,"Cola um magnet com menos de 32768 bytes.");return;}char *url=malloc(bytes+1);if(!url){fail(s,500,"Sem memoria.");return;}if(recv_all(s,url,bytes)){free(url);return;}url[bytes]=0;rc=begin_magnet(url,bytes,error,sizeof(error));free(url);
  }else if(!strcmp(path,"/api/torrent")){
   if(!bytes){fail(s,400,"Escolhe um ficheiro .torrent.");return;}unsigned char *buf=malloc(bytes);if(!buf){fail(s,500,"Sem memoria.");return;}if(recv_all(s,buf,bytes)){free(buf);return;}rc=import_torrent(buf,bytes,error,sizeof(error));free(buf);
  }else{
@@ -80,7 +88,7 @@ static void handle(Sock s){
   else if(!strcmp(path,"/api/download-install"))rc=begin_download(1,error,sizeof(error));
   else if(!strcmp(path,"/api/install"))rc=begin_install(error,sizeof(error));
   else if(!strcmp(path,"/api/pause")){lock(&app.mu);if(!strcmp(app.phase,"installing")){rc=-1;snprintf(error,sizeof(error),"A instalacao ja esta em curso. Aguarda a conclusao.");}else app.pause=1;unlock(&app.mu);}
-  else if(!strcmp(path,"/api/reset")){lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){rc=-1;snprintf(error,sizeof(error),"Pausa primeiro a tarefa atual.");}else{app.pause=1;app.busy=0;app.loaded=0;app.done=0;app.install_done=app.install_total=0;app.message[0]=0;app.phase[0]=0;}unlock(&app.mu);}
+  else if(!strcmp(path,"/api/reset")){lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){rc=-1;snprintf(error,sizeof(error),"Pausa primeiro a tarefa atual.");}else{app.pause=1;app.busy=0;app.loaded=0;app.magnet_pending=0;app.done=0;app.install_done=app.install_total=0;app.message[0]=0;app.phase[0]=0;}unlock(&app.mu);}
   else{fail(s,404,"Pedido desconhecido.");return;}
  }
  if(rc)fail(s,400,error);else reply(s,200,"application/json","{\"ok\":true}",11);
@@ -89,5 +97,11 @@ void *http_server(void *unused){
  (void)unused;Sock s=socket(AF_INET,SOCK_STREAM,0);if(s==BADSOCK){set_status("error","Nao foi possivel abrir o servidor.");return NULL;}int yes=1;setsockopt(s,SOL_SOCKET,SO_REUSEADDR,(void*)&yes,sizeof(yes));
  struct sockaddr_in a={0};a.sin_family=AF_INET;a.sin_port=htons(app.port);a.sin_addr.s_addr=htonl(INADDR_ANY);
  if(bind(s,(struct sockaddr*)&a,sizeof(a))||listen(s,8)){sockclose(s);set_status("error","A porta 8787 esta ocupada ou indisponivel.");return NULL;}
- for(;;){Sock client=accept(s,NULL,NULL);if(client==BADSOCK){sleep_ms(100);continue;}handle(client);sockclose(client);}return NULL;
+ for(;;){Sock client=accept(s,NULL,NULL);if(client==BADSOCK){sleep_ms(100);continue;}handle(client);
+  /* Preserve an error response when a rejected POST still has unread bytes.
+     Closing immediately would send a TCP reset on Windows instead. */
+  shutdown(client,1);sock_timeout(client,1);char discard[4096];size_t drained=0;time_t until=time(NULL)+1;
+  while(drained<=MAX_TORRENT&&time(NULL)<=until){int got=recv(client,discard,sizeof(discard),0);if(got<=0)break;drained+=got;}
+  sockclose(client);
+ }return NULL;
 }

@@ -1,5 +1,17 @@
 # Atualizações da h1pNoise
 
+## Magnets — 0.1.29
+
+A release 0.1.29 acrescenta magnets e é distribuída para instalação manual,
+com a app fechada. O feed antigo continua na 0.1.25: não anuncia esta release
+às versões com o instalador problemático. As versões posteriores não devem
+ser anunciadas nesse feed antes de confirmar um caminho de instalação
+que funcione numa PS4 real. Não uses Instalar agora nas versões 0.1.26/0.1.27.
+
+O código contém um protótipo opcional de atualizações do executável
+(--runtime), com canal separado e confirmação de arranque. Não está ativo
+nos PKG da 0.1.29 e ainda não foi confirmado numa PS4 real.
+
 ## Recuperação 0.1.28
 
 Não uses **Instalar agora** nas versões 0.1.26/0.1.27. No teste numa PS4

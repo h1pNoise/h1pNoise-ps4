@@ -1,6 +1,6 @@
 """Local synthetic tracker + BitTorrent peer. Never contacts public trackers."""
 import hashlib, http.client, http.server, json, os, socket, socketserver, struct
-import subprocess, threading, time, tempfile, pathlib, unittest
+import subprocess, threading, time, tempfile, pathlib, unittest, urllib.parse, base64
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 def enc(x):
@@ -30,6 +30,18 @@ class Seed(socketserver.BaseRequestHandler):
             wire(s,b'\x05'+bits);wire(s,b'\x01')
             while True:
                 n=struct.unpack('!I',exact(s,4))[0];p=exact(s,n)
+                if len(p)>=2 and p[:2]==b'\x14\x00':
+                    mode=getattr(self.server,'metadata_mode','valid');total=8388608 if mode=='oversize' else len(self.server.metadata)
+                    wire(s,b'\x14\x00'+enc({b'm':{b'ut_metadata':7},b'metadata_size':total}))
+                elif len(p)>=2 and p[:2]==b'\x14\x07':
+                    import re
+                    piece=int(re.search(rb'5:piecei([0-9]+)e',p).group(1));data=self.server.metadata[piece*16384:(piece+1)*16384]
+                    if getattr(self.server,'metadata_delay',0):time.sleep(self.server.metadata_delay)
+                    mode=getattr(self.server,'metadata_mode','valid')
+                    if mode=='reject':wire(s,b'\x14\x01'+enc({b'msg_type':2,b'piece':piece}));continue
+                    if mode=='corrupt':data=bytes([data[0]^255])+data[1:]
+                    total=len(self.server.metadata)+(1 if mode=='wrong-size' else 0)
+                    wire(s,b'\x14\x01'+enc({b'msg_type':1,b'piece':piece,b'total_size':total})+data)
                 if p and p[0]==6:
                     piece,offset,size=struct.unpack('!III',p[1:]);start=piece*self.server.pl+offset
                     if self.server.delay:time.sleep(self.server.delay)
@@ -68,6 +80,7 @@ class Integration(unittest.TestCase):
         for server in [cls.seed,cls.tracker,cls.udp]:threading.Thread(target=server.serve_forever,daemon=True).start()
         cls.info={b'files':[{b'length':123457,b'path':[b'base.pkg']},{b'length':len(cls.seed.data)-123457,b'path':[b'patch.pkg']}],b'name':b'Local synthetic test',b'piece length':cls.seed.pl,b'pieces':b''.join(cls.seed.hashes)}
         cls.seed.ih=hashlib.sha1(enc(cls.info)).digest();cls.ih=cls.seed.ih.hex()
+        cls.seed.metadata=enc(cls.info);cls.seed.metadata_mode='valid';cls.seed.metadata_delay=0
         cls.torrent=enc({b'announce':f'http://127.0.0.1:{cls.tracker.server_port}/announce'.encode(),b'info':cls.info})
         sock=socket.socket();sock.bind(('127.0.0.1',0));cls.port=sock.getsockname()[1];sock.close()
         cls.launch()
@@ -207,5 +220,57 @@ class Integration(unittest.TestCase):
         torrent=enc({b'announce':b'http://127.0.0.1/announce',b'info':info})
         self.assertEqual(self.api('/api/torrent',torrent,'POST')[0],200)
         s=self.api('/api/status')[1];self.assertEqual(s['total'],total);self.assertEqual(s['files'][0]['size'],total)
+
+    def magnet_url(self,tracker=None,direct=False,hash_value=None):
+        url='magnet:?'+urllib.parse.urlencode({'xt':'urn:btih:'+(hash_value or self.seed.ih.hex()),'dn':'Local metadata test'})
+        if tracker:url+='&'+urllib.parse.urlencode({'tr':tracker})
+        if direct:url+='&'+urllib.parse.urlencode({'x.pe':f'127.0.0.1:{self.seed.server_address[1]}'})
+        return url
+
+    def test_11_magnet_validation(self):
+        current=self.api('/api/status')[1]['name'];base=self.magnet_url(direct=True)
+        values=['','http://example.org/a', 'magnet:?xt=urn:btmh:1220abcd', 'magnet:?xt=urn:btih:'+self.ih,
+                base.replace(self.ih,'bad'),base+'&dn=%00bad',base+'&tr=udp%GG',base+'&xt=urn:btih:'+('f'*40),
+                base+'&x.pe=127.0.0.1:999999',base+'&x.pe=[::1]:80',base+'#fragment']
+        for value in values:
+            code,reply=self.api('/api/magnet',value.encode(),'POST');self.assertEqual(code,400,(value,reply));self.assertEqual(self.api('/api/status')[1]['name'],current)
+        self.assertEqual(self.api('/api/magnet',base.encode(),'POST',auth=False)[0],401)
+        self.assertEqual(self.api('/api/magnet',method='POST',extra={'Content-Length':'32768'})[0],400)
+
+    def test_12_magnet_http_and_base32_download(self):
+        self.seed.metadata=enc(self.info);self.seed.ih=hashlib.sha1(self.seed.metadata).digest();self.seed.metadata_mode='valid'
+        for hash_value in [self.seed.ih.hex(),base64.b32encode(self.seed.ih).decode().lower()]:
+            url=self.magnet_url(tracker=f'http://127.0.0.1:{self.tracker.server_port}/announce',hash_value=hash_value)
+            self.assertEqual(self.api('/api/magnet',url.encode(),'POST')[0],200)
+            s=self.wait('ready');self.assertTrue(s['loaded']);self.assertFalse(s['magnetPending']);self.assertEqual(s['total'],len(self.seed.data))
+            folder=self.data_dir/self.seed.ih.hex();self.assertTrue((folder/'source.torrent').exists())
+            for p in folder.glob('file*.pkg'):p.write_bytes(b'')
+            self.command('download');self.wait('downloaded');self.assertEqual((folder/'file00.pkg').read_bytes(),self.seed.data[:123457]);self.assertEqual((folder/'file01.pkg').read_bytes(),self.seed.data[123457:])
+
+    def test_13_magnet_udp_and_direct_sources(self):
+        for options in [dict(tracker=f'udp://127.0.0.1:{self.udp.server_address[1]}/announce'),dict(direct=True)]:
+            self.assertEqual(self.api('/api/magnet',self.magnet_url(**options).encode(),'POST')[0],200)
+            self.wait('ready');self.command('download');self.wait('downloaded')
+        self.shutdown();self.launch();s=self.api('/api/status')[1];self.assertTrue(s['loaded']);self.command('download');self.wait('downloaded')
+
+    def test_14_magnet_multiblock_and_untrusted_metadata(self):
+        info=dict(self.info);info[b'comment']=b'Local fixture only '*3000
+        self.seed.metadata=enc(info);self.seed.ih=hashlib.sha1(self.seed.metadata).digest();url=self.magnet_url(direct=True).encode();folder=self.data_dir/self.seed.ih.hex()
+        for mode in ['corrupt','reject','wrong-size','oversize']:
+            self.seed.metadata_mode=mode;self.assertEqual(self.api('/api/magnet',url,'POST')[0],200);s=self.wait('error');self.assertFalse(s['loaded']);self.assertFalse((folder/'source.torrent').exists());self.assertTrue((self.data_dir/self.ih/'file00.pkg').exists())
+        self.seed.metadata_mode='valid';self.assertEqual(self.api('/api/magnet',url,'POST')[0],200);s=self.wait('ready');self.assertEqual(s['total'],len(self.seed.data));self.assertGreater(len(self.seed.metadata),32768)
+        self.command('download');self.wait('downloaded');self.assertEqual((folder/'file00.pkg').read_bytes(),self.seed.data[:123457])
+
+    def test_15_magnet_pause_busy_and_reset(self):
+        self.seed.metadata_delay=.5;url=self.magnet_url(direct=True).encode();self.assertEqual(self.api('/api/magnet',url,'POST')[0],200)
+        s=self.api('/api/status')[1];self.assertTrue(s['magnetPending']);self.assertTrue(s['busy']);self.assertEqual(s['phase'],'metadata')
+        for p,body in [('magnet',url),('torrent',self.torrent),('reset',None),('download',None)]:self.assertEqual(self.api('/api/'+p,body,'POST')[0],400,p)
+        self.command('pause');s=self.wait('paused');self.assertFalse(s['loaded']);self.command('reset');self.assertFalse(self.api('/api/status')[1]['magnetPending']);self.seed.metadata_delay=0
+
+    def test_16_magnet_requires_pkg_files(self):
+        info=dict(self.info);info[b'files']=[{b'length':len(self.seed.data),b'path':[b'not-a-package.txt']}]
+        self.seed.metadata=enc(info);self.seed.ih=hashlib.sha1(self.seed.metadata).digest();self.assertEqual(self.api('/api/magnet',self.magnet_url(direct=True).encode(),'POST')[0],200)
+        s=self.wait('error');self.assertIn('.pkg',s['message']);self.assertFalse(s['loaded']);self.assertFalse((self.data_dir/self.seed.ih.hex()/'source.torrent').exists())
+        self.seed.metadata=enc(self.info);self.seed.ih=hashlib.sha1(self.seed.metadata).digest()
 
 if __name__=='__main__':unittest.main(verbosity=2)

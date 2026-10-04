@@ -4,7 +4,7 @@ const html=fs.readFileSync(process.argv[2],'utf8'),script=fs.readFileSync(path.j
 const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);assert.equal(ids.length,new Set(ids).size);
 let focused='',now=1000;
 function node(id=''){
- const classes=new Set();return {id,value:'',textContent:'',disabled:false,hidden:false,files:[],children:[],dataset:{},style:{},attributes:{},handlers:{},
+ const classes=new Set();return {id,value:'',textContent:'',disabled:false,hidden:false,files:[],children:[],dataset:{},style:{},attributes:{},handlers:{},parentElement:{hidden:false},
  classList:{add:s=>classes.add(s),remove:s=>classes.delete(s),toggle:(s,yes)=>yes===undefined?(classes.has(s)?classes.delete(s):classes.add(s)):yes?classes.add(s):classes.delete(s),contains:s=>classes.has(s)},
  setAttribute(k,v){this.attributes[k]=v;},focus(){focused=id;},scrollIntoView(){},select(){},remove(){},replaceChildren(){this.children=[];},append(...items){this.children.push(...items);},
  addEventListener(k,fn){(this.handlers[k]??=[]).push(fn);},click(){return this.onclick?.();},getContext(){return {fillRect(){}}}
@@ -15,7 +15,7 @@ const state={loaded:false,busy:false,directSupported:true,directBusy:false,direc
 let networkError=false,lastPost=null,postHold=null,authStatus=0,requests=0;
 const ctx=vm.createContext({
  document:{getElementById:id=>{assert.ok(nodes[id],id);return nodes[id];},createElement:()=>node(),body:node()},
- URL,URLSearchParams,AbortController,location:{hash:'',origin:'http://192.168.1.10:8787',pathname:'/',search:''},history:{},navigator:{},window:{},matchMedia:()=>({matches:false}),
+ URL,URLSearchParams,AbortController,TextEncoder,location:{hash:'',origin:'http://192.168.1.10:8787',pathname:'/',search:''},history:{},navigator:{},window:{},matchMedia:()=>({matches:false}),
  performance:{now:()=>now},setInterval(){},setTimeout(){return 1;},clearTimeout(){},
  fetch:async(url,options)=>{
   requests++;if(authStatus)return {ok:false,status:authStatus,json:async()=>({error:'Codigo recusado'})};
@@ -36,6 +36,11 @@ const setURL=async value=>{nodes['pkg-url'].value=value;await fire('pkg-url','in
  state.free=0;await ctx.refresh();assert.equal(nodes['space-value'].textContent,'0 B');
  await nodes['tab-link'].click();assert.equal(nodes['panel-torrent'].hidden,true);assert.equal(nodes['tab-link'].attributes['aria-selected'],'true');
  await fire('tab-link','keydown',{key:'Home',preventDefault(){}});assert.equal(focused,'tab-torrent');assert.equal(nodes['panel-torrent'].hidden,false);
+ await fire('tab-torrent','keydown',{key:'ArrowRight',preventDefault(){}});assert.equal(focused,'tab-magnet');assert.equal(nodes['panel-magnet'].hidden,false);
+ nodes['magnet-url'].value='not a magnet';await fire('magnet-url','input');lastPost=null;await nodes['send-magnet'].click();assert.equal(lastPost,null);assert.match(nodes['magnet-error'].textContent,/magnet/);
+ const magnet='magnet:?xt=urn:btih:'+('a'.repeat(40))+'&tr=udp%3A%2F%2Ftracker.example%3A80%2Fannounce';nodes['magnet-url'].value=' '+magnet+' ';await fire('magnet-url','input');await nodes['send-magnet'].click();assert.equal(lastPost.url,'/api/magnet');assert.equal(lastPost.options.body,magnet);
+ Object.assign(state,{magnetPending:true,busy:true,loaded:false,phase:'metadata',name:'Demo magnet',message:'A obter os dados'});await ctx.refresh();assert.equal(nodes.empty.hidden,true);assert.equal(nodes['torrent-progress'].hidden,false);assert.equal(nodes['phase-label'].textContent,'A obter dados do magnet');assert.equal(nodes.pause.disabled,false);assert.equal(nodes.pause.textContent,'Cancelar procura');assert.equal(nodes.start.hidden,true);assert.equal(nodes['send-magnet'].disabled,true);assert.equal(nodes.upload.disabled,true);await nodes.pause.click();assert.equal(lastPost.url,'/api/pause');
+ Object.assign(state,{busy:false,phase:'paused'});await ctx.refresh();assert.equal(nodes.reset.disabled,false);assert.equal(nodes['send-magnet'].disabled,false);Object.assign(state,{magnetPending:false,phase:'idle'});await ctx.refresh();
  const file={name:'demo.torrent',size:1024};nodes.torrent.files=[file];await fire('torrent','change');assert.equal(nodes.upload.disabled,false);
  await nodes.upload.click();assert.equal(lastPost.options.body,file);assert.equal(lastPost.options.headers['X-Harbor-Code'],'0123');
  nodes.torrent.files=[{name:'bad.txt',size:50}];await fire('torrent','change');assert.equal(nodes.upload.disabled,true);assert.match(nodes['upload-error'].textContent,/.torrent/);
@@ -65,6 +70,8 @@ const setURL=async value=>{nodes['pkg-url'].value=value;await fire('pkg-url','in
  Object.assign(state.update,{busy:true,phase:'downloading',done:100,size:200});await ctx.refresh();assert.equal(nodes['update-progress'].value,50);for(const id of ['update-check','update-download','update-install','upload','send-link'])assert.equal(nodes[id].disabled,true,id);
  Object.assign(state.update,{busy:false,ready:true,phase:'ready',done:200,message:'Atualizacao guardada em /data/pkg/h1pNoise-update-38.pkg. Instala manualmente.'});await ctx.refresh();assert.equal(nodes['update-download'].hidden,true);assert.equal(nodes['update-install'].hidden,true);assert.equal(nodes['update-install'].disabled,true);assert.match(nodes['update-message'].textContent,/Instala manualmente/);
  lastPost=null;await nodes['update-install'].click();await nodes['update-confirm-install'].click();assert.equal(lastPost,null);assert.equal(nodes['update-confirm'].hidden,true);
+ state.update.mode='runtime';state.update.ready=false;state.update.phase='available';await ctx.refresh();assert.equal(nodes['update-download'].textContent,'Atualizar agora');await nodes['update-download'].click();assert.equal(lastPost.url,'/api/update/download');
+ state.update.ready=true;state.update.phase='error';await ctx.refresh();assert.equal(nodes['update-install'].hidden,false);assert.equal(nodes['update-install'].disabled,false);await nodes['update-install'].click();assert.equal(lastPost.url,'/api/update/install');
  state.update.task=42;state.update.phase='queued';await ctx.refresh();for(const id of ['update-check','update-install','send-link','upload','reset'])assert.equal(nodes[id].disabled,true,id);
  for(const status of [401,429]){authStatus=status;nodes.code.value='0123';await nodes.connect.click();const before=requests;await ctx.refresh();await ctx.refresh();assert.equal(requests,before,'authentication errors must stop automatic retries');authStatus=0;}
  console.log('UI checks passed, including stopped automatic retries after 401/429.');
