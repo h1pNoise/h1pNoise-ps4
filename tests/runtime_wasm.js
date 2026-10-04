@@ -126,12 +126,13 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const largeHeaders=(dest,n)=>{const h='Location: '+dest+'\r\nX-Security: ';return h+'x'.repeat(n-Buffer.byteLength(h)-2)+'\r\n';};
  ready({redirect:u=>u===url?{status:302,headers:largeHeaders(asset,5226)}:u===asset?{status:200,body:pkg}:undefined});
  assert.equal(requests.at(-1),asset);
- available({redirect:u=>u===feed?{status:302,headers:largeHeaders(asset,32768)}:{status:200,body:signed()}});
+ const feedRedirect='https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/runtime/redirect-test.h1p';
+ available({redirect:u=>u===feed?{status:302,headers:largeHeaders(feedRedirect,32768)}:{status:200,body:signed()}});
  for(const ignoreHeaderLimit of [false,true]){reset({ignoreHeaderLimit,redirect:()=>({status:302,headers:largeHeaders(asset,32769)})});op(0,0,'error');assert.match(str(e.fixture_message()),/limite de cabecalhos/);assert.equal(requests.length,1);}
  for(const [sendError,message] of [[0x80431073,'limite de cabecalhos'],[0x80431075,'ligacao HTTPS']]){reset({sendError});op(0,0,'error');assert.ok(str(e.fixture_message()).includes(message));}
- available({redirect:u=>u===feed?{status:302,location:'https://release-assets.githubusercontent.com/test/feed'}:{status:200,body:signed()}});
+ available({redirect:u=>u===feed?{status:302,location:feedRedirect}:{status:200,body:signed()}});
  available({redirect:u=>u===feed?{status:302,location:'/test/app/releases/download/v0.1.10/update.h1p'}:{status:200,body:signed()}});
- for(const location of ['http://github.com/insecure','https://github.com.evil.example/update','//evil.example/update','https://evil.example/update']){reset({redirect:()=>({status:302,location})});op(0,0,'error');assert.equal(requests.length,1);}
+ for(const location of ['http://github.com/insecure','https://github.com.evil.example/update','//evil.example/update','https://evil.example/update','https://release-assets.githubusercontent.com/test/feed']){reset({redirect:()=>({status:302,location})});op(0,0,'error');assert.equal(requests.length,1);}
  reset({redirect:()=>({status:302,location:feed})});op(0,0,'error');assert.equal(requests.length,6);
  reset({redirect:()=>({status:302,headers:'Location: '+feed+'\r\nLocation: '+feed+'\r\n'})});op(0,0,'error');
  for(const options of [{noSpace:true},{openFail:true},{writeFail:true},{flushFail:true},{syncFail:true},{renameFail:true},{payload:pkg.subarray(0,100)},{payload:Buffer.concat([pkg,Buffer.from([0])])},{payload:Buffer.from(pkg).fill(0,10000,10001)}]){available(options);op(1,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(registered,0);assert.equal(files.has('/data/harbor/runtime/h1pNoise-40.self'),!!options.syncFail);assert.equal(files.has('/data/harbor/runtime/pending'),false);}
