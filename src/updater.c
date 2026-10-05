@@ -1,4 +1,5 @@
 #include "app.h"
+#include <errno.h>
 #include "updater.h"
 #include "update_config.h"
 #include "version.h"
@@ -55,7 +56,7 @@ static void *worker(void *arg){
 #else
    if(update_destination_prepare(destination,&directory,error,sizeof(error))||storage_check(update_destination_root(destination),m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
 #endif
-   char part[720];snprintf(part,sizeof(part),"%s.part",path);Download d={0};d.file=update_destination_file(directory,part,"wb");if(!d.file){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao no destino escolhido. Confirma a pen e o acesso de escrita.");goto done;}
+   char part[720];snprintf(part,sizeof(part),"%s.part",path);Download d={0};errno=0;d.file=update_destination_file(directory,part,"wb");if(!d.file){int reason=errno;update_destination_remove(directory,part);snprintf(error,sizeof(error),"Nao foi possivel criar o ficheiro em %s (erro %d). %s",update_destination_root(destination),reason,destination?"Confirma a pen e envia /data/pkg/usb-debug.log.":"Confirma o espaco livre e o acesso de escrita.");goto done;}
    crypto_sha512_init(&d.hash);int net=update_http_get(m.url,m.size,file_sink,&d,error,sizeof(error));int io=fflush(d.file);if(fclose(d.file))io=-1;
    unsigned char digest[64];crypto_sha512_final(&d.hash,digest);
    if(net||io||d.done!=m.size||crypto_verify64(digest,m.sha512)){update_destination_remove(directory,part);if(!*error)snprintf(error,sizeof(error),"Download incompleto ou falha de escrita. Confirma o destino e tenta novamente. A versao instalada nao foi alterada.");goto done;}

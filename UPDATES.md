@@ -127,3 +127,7 @@ HTTPS ativos, a validação da assinatura, SHA-512, identidade e versão do PKG.
 ## USB a partir de 0.1.50
 
 A selecao USB permanece disponivel mesmo quando a pasta nao e visivel na raiz isolada da app. O acesso e verificado antes do download. A pasta real e aberta com acesso temporario quando necessario; as credenciais sao restauradas antes de iniciar a rede. As operacoes no PKG ficam ancoradas ao diretorio aberto, com nomes fixos e sem criar pastas USB. O registo de falha de acesso e `/data/pkg/usb-debug.log`. A instalacao continua manual pelo GoldHEN.
+
+## Escrita USB a partir de 0.1.52
+
+Se as operações no diretório externo falharem por permissões ou não forem suportadas pelo firmware, a app tenta permissões temporárias e depois o caminho absoluto fixo na raiz USB. As credenciais são restauradas antes de usar o ficheiro e iniciar a rede. O PKG continua diretamente na raiz da pen, sem subpasta ou cópia interna. O registo inclui a versão, o passo e os códigos das falhas. A release 0.1.53 inclui o PKG 0.1.52 para testar imediatamente esta correção no download da 0.1.53. Não anuncia alterações nos canais dos instaladores antigos.

@@ -21,7 +21,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/manual-v1\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
- let usbElevated=false,directories,descriptors;
+ let usbElevated=false,usbAuthorized=false,directories,descriptors;
  let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared;
  const m=()=>new Uint8Array(instance.exports.memory.buffer),v=()=>new DataView(m().buffer);
  const str=p=>{p=Number(p);let end=p;while(m()[end])end++;return Buffer.from(m().subarray(p,end)).toString();};
@@ -36,17 +36,18 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   memmove:(d,s,n)=>{m().copyWithin(Number(d),Number(s),Number(s)+Number(n));return d;},
   memset:(d,c,n)=>{m().fill(c,Number(d),Number(d)+Number(n));return d;},
   __errno_location:()=>BigInt(base+1024),
-  open:(path,flags)=>{path=str(path);assert.match(path,/^\/mnt\/usb[01]$/);assert.equal(flags,131072);if(!cfg.usb?.includes(path)||cfg.usbRegularFile||(cfg.usbSandbox&&!usbElevated)){put32(BigInt(base+1024),2);return -1;}const id=++handleId;directories.set(id,path);return id;},
+  open:(path,flags)=>{path=str(path);if(flags===131072){assert.match(path,/^\/mnt\/usb[01]$/);if(!cfg.usb?.includes(path)||cfg.usbRegularFile||(cfg.usbSandbox&&!usbElevated)){put32(BigInt(base+1024),2);return -1;}const id=++handleId;directories.set(id,path);return id;}
+   assert.equal(usbElevated,true,'absolute USB file open needs temporary full root');assert.match(path,/^\/mnt\/usb[01]\/h1pNoise-update-\d+\.pkg\.part$/);if(cfg.openFail){put32(BigInt(base+1024),30);return -1;}if(flags&512)files.set(path,Buffer.alloc(0));if(!files.has(path)){put32(BigInt(base+1024),2);return -1;}const id=++handleId;descriptors.set(id,path);return id;},
   close:id=>{assert.ok(directories.delete(id)||descriptors.delete(id),'close unknown descriptor');return 0;},
   jbc_jailbreak_cred:p=>{if(cfg.usbResolveFail)return -1;m().fill(0,Number(p),Number(p)+80);return 0;},
-  jbc_set_cred:p=>{const restoring=Buffer.from(m().subarray(Number(p),Number(p)+80)).equals(savedCred);usbElevated=!restoring;if(restoring&&cfg.usbRestoreFail)return -1;if(!restoring&&cfg.usbActivateFail)return -1;return 0;},jbc_resolve_error:()=>0,
+  jbc_set_cred:p=>{const restoring=Buffer.from(m().subarray(Number(p),Number(p)+80)).equals(savedCred);usbAuthorized=!restoring;usbElevated=!Buffer.from(m().subarray(Number(p)+32,Number(p)+56)).equals(savedCred.subarray(32,56));if(restoring&&cfg.usbRestoreFail)return -1;if(!restoring&&cfg.usbActivateFail)return -1;return 0;},jbc_resolve_error:()=>0,
   update_usb_native:(number,fd,name,value,other)=>{
-   assert.equal(usbElevated,false,'roots must be restored before USB file operations');assert.ok(directories.has(fd));name=str(name);assert.match(name,/^h1pNoise-update-\d+\.pkg(?:\.part)?$/);const path=directories.get(fd)+'/'+name;
-   if(number===499){if(cfg.openFail)return -1;if(value&512)files.set(path,Buffer.alloc(0));if(!files.has(path))return -1;const id=++handleId;descriptors.set(id,path);return id;}
+   assert.equal(usbElevated,false,'relative USB operation must retain app roots');assert.ok(directories.has(fd));if(cfg.nativeError||(cfg.usbNeedsPermissions&&!usbAuthorized)){put32(BigInt(base+1024),cfg.nativeError||13);return -1;}name=str(name);assert.match(name,/^h1pNoise-update-\d+\.pkg(?:\.part)?$/);const path=directories.get(fd)+'/'+name;
+   if(number===499){if(cfg.openFail){put32(BigInt(base+1024),30);return -1;}if(value&512)files.set(path,Buffer.alloc(0));if(!files.has(path))return -1;const id=++handleId;descriptors.set(id,path);return id;}
    if(number===503){assert.equal(value,0);files.delete(path);return 0;}
    assert.equal(number,501);assert.equal(value,fd);if(cfg.renameFail)return -1;const to=directories.get(fd)+'/'+str(other);assert.ok(files.has(path));files.set(to,files.get(path));files.delete(path);return 0;
   },
-  fdopen:(fd,mode)=>{assert.equal(usbElevated,false);assert.ok(descriptors.has(fd));const path=descriptors.get(fd);descriptors.delete(fd);const id=BigInt(++handleId);handles.set(id,{path,at:0});return id;},
+  fdopen:(fd,mode)=>{assert.equal(usbElevated,false);assert.equal(usbAuthorized,false);assert.ok(descriptors.has(fd));if(cfg.fdopenFail){put32(BigInt(base+1024),12);return 0n;}const path=descriptors.get(fd);descriptors.delete(fd);const id=BigInt(++handleId);handles.set(id,{path,at:0});return id;},
   jbc_get_cred:p=>{m().fill(17,Number(p),Number(p)+80);put64(p+56n,0x3800000000000011n);put64(p+64n,0x1000n);put64(p+72n,0x2000n);savedCred=Buffer.from(m().subarray(Number(p),Number(p)+80));return 0;},
   jbc_set_auth:p=>{
    p=Number(p);assert.deepEqual(Buffer.from(m().subarray(p,p+56)),savedCred.subarray(0,56),'filesystem/UID changed');
@@ -72,12 +73,13 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   fread:(data,size,count,id)=>{const h=handles.get(id),b=files.get(h.path),n=Math.min(Number(size*count),b.length-h.at);m().set(b.subarray(h.at,h.at+n),Number(data));h.at+=n;return BigInt(n)/size;},
   fflush:()=>cfg.flushFail?-1:0,ferror:()=>0,rewind:id=>{handles.get(id).at=0;},fclose:id=>{assert.ok(handles.delete(id));return 0;},
   remove:path=>{path=str(path);assert.match(path,/^(?:\/data\/pkg|\/mnt\/usb[01])\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
-  rename:(a,b)=>{a=str(a);b=str(b);if(cfg.renameFail)return -1;assert.ok(files.has(a));files.set(b,files.get(a));files.delete(a);return 0;},
+  unlink:path=>{path=str(path);assert.equal(usbElevated,true);assert.match(path,/^\/mnt\/usb[01]\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
+  rename:(a,b)=>{a=str(a);b=str(b);if(a.startsWith('/mnt/usb'))assert.equal(usbElevated,true);if(cfg.renameFail)return -1;assert.ok(files.has(a));files.set(b,files.get(a));files.delete(a);return 0;},
   sceSysmoduleLoadModuleInternal:()=>0,sceHttpSetAutoRedirect:(_id,enable)=>{assert.equal(enable,0);return 0;},
   sceHttpSetResponseHeaderMaxSize:(id,size)=>{assert.equal(id,4);assert.equal(size,32768n);headerLimits.set(id,Number(size));return 0;},
   sceHttpAddRequestHeader:(_id,name,val)=>{assert.equal(str(name),'Accept-Encoding');assert.equal(str(val),'identity');return 0;},
   sceHttpSendRequest:id=>{
-   assert.equal(usbElevated,false,'network ran with changed roots');
+   assert.equal(usbElevated,false,'network ran with changed roots');assert.equal(usbAuthorized,false,'network ran with changed credentials');
    requests.push(requestUrl);bodyOffset=0;
    reply=cfg.redirect?.(requestUrl)||{status:cfg.status||200,body:requestUrl===feed?cfg.manifest:cfg.payload};
    if(cfg.sendError)return cfg.sendError|0;
@@ -115,7 +117,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};usbElevated=false;directories=new Map();descriptors=new Map();privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};usbElevated=false;usbAuthorized=false;directories=new Map();descriptors=new Map();privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
  function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');assert.equal(directories.size,0,'directory cleanup');assert.equal(descriptors.size,0,'descriptor cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  function ready(options={}){available(options);op(1,0,'ready');assert.equal(e.fixture_state(2),1);assert.equal(e.fixture_done(),BigInt(pkg.length));assert.deepEqual(files.get(packagePath),pkg);}
@@ -159,10 +161,11 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   available({usb:[root],usbSandbox:true,destination:root});saveTo(id);assert.deepEqual(files.get(dest),pkg);assert.equal(str(e.fixture_update_path()),dest);assert.match(str(e.fixture_message()),/Package Installer/);
   // Copy again to internal storage, retaining the verified USB file.
   cfg.destination='/data/pkg';saveTo('internal');assert.deepEqual(files.get(dest),pkg);assert.deepEqual(files.get(packagePath),pkg);
+  for(const options of [{usbNeedsPermissions:true},...([1,2,13,78].map(nativeError=>({nativeError})))]){available({usb:[root],usbSandbox:true,destination:root,...options});saveTo(id);assert.deepEqual(files.get(dest),pkg);assert.equal(usbAuthorized,false);}
   available({usb:[],destination:root});saveTo(id,0,'error');assert.match(str(e.fixture_message()),/pen USB/);assert.equal(e.fixture_state(2),0);assert.equal(requests.length,1);
   available({usb:[root],usbRegularFile:true,destination:root});saveTo(id,0,'error');assert.equal(requests.length,1);
-  for(const options of [{usbResolveFail:true,usbSandbox:true},{usbActivateFail:true,usbSandbox:true},{openFail:true},{noSpace:true},{writeFail:true},{flushFail:true},{unplugAfterBytes:16384},{renameFail:true}]){
-   available({usb:[root],destination:root,...options});saveTo(id,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(files.has(dest),false);if(!options.renameFail)assert.equal(files.has(dest+'.part'),false);
+  for(const options of [{usbResolveFail:true,usbSandbox:true},{usbActivateFail:true,usbSandbox:true},{openFail:true},{fdopenFail:true},{nativeError:78,openFail:true},{nativeError:30},{noSpace:true},{writeFail:true},{flushFail:true},{unplugAfterBytes:16384},{renameFail:true}]){
+   available({usb:[root],destination:root,...options});saveTo(id,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(files.has(dest),false);if(!options.renameFail)assert.equal(files.has(dest+'.part'),false,JSON.stringify(options));
   }
  }
  available();for(const id of ['../usb0','/mnt/usb0','usb2','USB0','internal/../',''])saveTo(id,-1);
