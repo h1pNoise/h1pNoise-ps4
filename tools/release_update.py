@@ -23,7 +23,7 @@ def main():
  for x in ['pkg','private-key','out']:p.add_argument('--'+x,type=Path,required=True)
  for x in ['version','url','notes']:p.add_argument('--'+x,required=True)
  p.add_argument('--build',type=int,required=True)
- p.add_argument('--channel',choices=['manual-v1','pkg-install-test','pkg-direct-test','pkg-direct-allocated-test'],help='Validate eligibility and keep experimental auto-install PKGs separate')
+ p.add_argument('--channel',choices=['manual-v1','pkg-install-test','pkg-direct-test','pkg-direct-allocated-test','pkg-payload-test'],help='Validate eligibility and keep experimental auto-install PKGs separate')
  p.add_argument('--runtime',action='store_true',help='Sign executable update for the bootstrap channel (not a PKG)')
  p.add_argument('--sfo',help='Runtime version field, e.g. 00.40')
  a=p.parse_args();data=a.pkg.read_bytes()
@@ -38,7 +38,7 @@ def main():
   if a.runtime:raise ValueError('Manual PKG and executable channels must stay separate')
   if tuple(map(int,a.version.split('.'))) < (0,1,30) or a.build<40 or sfo['APP_VER']<'00.40':raise ValueError('manual-v1 requires version 0.1.30 / build 40 / APP_VER 00.40 or newer')
   if 'shadps4' in a.pkg.name.lower():raise ValueError('Do not announce an emulator-only PKG to real consoles')
-  test_channel='pkg-direct-test' if a.pkg.name.endswith('-direct-test.pkg') else 'pkg-install-test' if a.pkg.name.endswith('-install-test.pkg') else 'manual-v1'
+  test_channel='pkg-payload-test' if a.pkg.name.endswith('-payload-test.pkg') else 'pkg-direct-test' if a.pkg.name.endswith('-direct-test.pkg') else 'pkg-install-test' if a.pkg.name.endswith('-install-test.pkg') else 'manual-v1'
   if a.channel!=test_channel and not (test_channel=='pkg-direct-test' and a.channel=='pkg-direct-allocated-test'):raise ValueError('Experimental PKGs must stay on their separate test channel')
  if not a.url.startswith('https://') or len(a.url)>=2048 or any(ord(c)<=32 or ord(c)>=127 or c in '\\#' for c in a.url):raise ValueError('Use a direct HTTPS URL')
  if len(a.notes.encode())>=768 or any(ord(c)<32 or ord(c)==127 for c in a.notes):raise ValueError('Use a single-line description below 768 bytes')

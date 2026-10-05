@@ -2,6 +2,8 @@
 #define H1PNOISE_UPDATE_CONFIG_H
 #ifdef HARBOR_RUNTIME_UPDATES
 #define UPDATE_FEED_URL "https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/runtime/current.h1p"
+#elif defined(HARBOR_PKG_PAYLOAD_TEST)
+#define UPDATE_FEED_URL "https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/pkg-payload-test/current.h1p"
 #elif defined(HARBOR_PKG_DIRECT_TEST)
 #define UPDATE_FEED_URL "https://raw.githubusercontent.com/h1pNoise/h1pNoise-ps4/main/releases/pkg-direct-allocated-test/current.h1p"
 #elif defined(HARBOR_PKG_INSTALLER_TEST)

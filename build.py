@@ -26,6 +26,7 @@ def main():
     p.add_argument('--host',action='store_true')
     p.add_argument('--shadps4',action='store_true',help='Emulator-only socket ABI compatibility; PKG installation disabled')
     p.add_argument('--runtime',action='store_true',help='PS4 bootstrap and signed executable updates; never replace the running PKG')
+    p.add_argument('--pkg-payload-test',action='store_true',help='GoldHEN payload verifies handoff, closes source app, installs and reopens')
     p.add_argument('--pkg-direct-test',action='store_true',help='Isolated native PKG self-install attempt without closing the app')
     p.add_argument('--pkg-installer-test',action='store_true',help='Isolated experimental PKG handoff to a separately installed helper')
     p.add_argument('--pkg-installer-version',help='Version for an isolated candidate build; requires --pkg-installer-build')
@@ -36,13 +37,15 @@ def main():
     a=p.parse_args();embed()
     if a.host and a.shadps4:p.error('--host and --shadps4 are separate targets')
     if a.runtime and (a.host or a.shadps4):p.error('--runtime requires a real PS4 target')
+    if a.pkg_payload_test and (a.host or a.shadps4 or a.runtime or a.pkg_direct_test or a.pkg_installer_test):p.error('--pkg-payload-test requires an isolated real PS4 build')
+    if a.pkg_payload_test and not (a.pkg_installer_version and a.pkg_installer_build):p.error('Choose an explicit payload test version/build')
     if a.pkg_direct_test and (a.host or a.shadps4 or a.runtime or a.pkg_installer_test):p.error('--pkg-direct-test requires a separate real PS4 target')
     if a.pkg_direct_test and not a.pkg_installer_version:p.error('--pkg-direct-test requires an explicit isolated version and build')
     if a.pkg_installer_test and (a.host or a.shadps4 or a.runtime):p.error('--pkg-installer-test requires a separate real PS4 target')
-    if (a.pkg_installer_version or a.pkg_installer_build) and (not (a.pkg_installer_test or a.pkg_direct_test) or not a.pkg_installer_version or not a.pkg_installer_build):p.error('Candidate version/build require --pkg-installer-test and both values')
+    if (a.pkg_installer_version or a.pkg_installer_build) and (not (a.pkg_installer_test or a.pkg_direct_test or a.pkg_payload_test) or not a.pkg_installer_version or not a.pkg_installer_build):p.error('Candidate version/build require --pkg-installer-test and both values')
     build=ROOT/('build-pkg-install-test' if a.pkg_installer_test else 'build-shadps4' if a.shadps4 else 'build');build.mkdir(exist_ok=True)
     extra=[]
-    if a.pkg_installer_test or a.pkg_direct_test:
+    if a.pkg_installer_test or a.pkg_direct_test or a.pkg_payload_test:
         # Never edit or repackage the published version. The opt-in build has
         # its own newer version and output directory, outside the release feed.
         parts=list(map(int,VERSION['APP_VERSION'].split('.')));parts[-1]+=1
@@ -52,11 +55,11 @@ def main():
             if not re.fullmatch(r'\d+\.\d+\.\d+',a.pkg_installer_version) or a.pkg_installer_build<number or tuple(map(int,a.pkg_installer_version.split('.')))<tuple(parts):p.error('Candidate must be newer than the published source')
             VERSION['APP_VERSION']=a.pkg_installer_version;number=a.pkg_installer_build
         if number>99:p.error('Choose the next SFO version explicitly before build 100')
-        build=ROOT/(('build-pkg-direct-test-' if a.pkg_direct_test else 'build-pkg-install-test-')+VERSION['APP_VERSION']);build.mkdir(exist_ok=True)
+        build=ROOT/(('build-pkg-payload-test-' if a.pkg_payload_test else 'build-pkg-direct-test-' if a.pkg_direct_test else 'build-pkg-install-test-')+VERSION['APP_VERSION']);build.mkdir(exist_ok=True)
         VERSION['APP_SFO_VERSION']='00.%02d'%number
         config=build/'installer-test-version.h'
         config.write_text('#define H1PNOISE_VERSION_H\n#define APP_BUILD '+str(number)+'\n'+''.join('#define '+k+' "'+v+'"\n' for k,v in VERSION.items()))
-        extra=['-DHARBOR_PKG_DIRECT_TEST' if a.pkg_direct_test else '-DHARBOR_PKG_INSTALLER_TEST','-include',config]
+        extra=['-DHARBOR_PKG_PAYLOAD_TEST' if a.pkg_payload_test else '-DHARBOR_PKG_DIRECT_TEST' if a.pkg_direct_test else '-DHARBOR_PKG_INSTALLER_TEST','-include',config]
     sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
     if a.host:
         os.environ.setdefault('ZIG_GLOBAL_CACHE_DIR',str(build/'zig-global'))
@@ -72,6 +75,13 @@ def main():
     if not a.shadps4:
         sources.extend([ROOT/'src/ps4_user.c',ROOT/'src/ps4_bgft.c',ROOT/'src/installer_access.c',ROOT/'src/vendor/libjbc/jailbreak.c',ROOT/'src/vendor/libjbc/kernelrw.c'])
     if a.runtime:sources.append(ROOT/'src/runtime_update.c')
+    if a.pkg_payload_test:
+        payload_out=build/'payload'
+        run([os.sys.executable,ROOT/'tools/build_update_payload.py','--sdk',sdk,'--llvm',llvm,'--out',payload_out])
+        blob=(payload_out/'h1pNoise-update-payload.bin').read_bytes()
+        embedded=build/'payload_data.c'
+        embedded.write_text('#include <stddef.h>\nconst unsigned char update_payload[]={'+','.join(map(str,blob))+'};\nconst size_t update_payload_size=sizeof(update_payload);\n')
+        sources.extend([ROOT/'src/pkg_update_payload_handoff.c',embedded])
     if a.pkg_installer_test:sources.append(ROOT/'src/pkg_update_handoff.c')
     if a.pkg_direct_test:sources.append(ROOT/'src/pkg_update_direct.c')
     for source in sources:
@@ -108,7 +118,7 @@ def main():
     if a.runtime:files+=' h1pNoise.self'
     run([tools/'create-gp4.exe','-out','pkg.gp4','--content-id='+content,'--files',files],cwd=pkg)
     run([tool,'pkg_build','pkg.gp4','.'],cwd=pkg)
-    output='h1pNoise-'+VERSION['APP_VERSION']+('-direct-test.pkg' if a.pkg_direct_test else '-install-test.pkg' if a.pkg_installer_test else '-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')
+    output='h1pNoise-'+VERSION['APP_VERSION']+('-payload-test.pkg' if a.pkg_payload_test else '-direct-test.pkg' if a.pkg_direct_test else '-install-test.pkg' if a.pkg_installer_test else '-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')
     artifact=next(pkg.glob('*.pkg'));shutil.copy2(artifact,build/output)
     print('Built',build/output)
     if a.pkg_installer_test:run([os.sys.executable,ROOT/'tools/build_pkg_updater.py','--sdk',sdk,'--llvm',llvm,'--out',build/'updater-helper'])

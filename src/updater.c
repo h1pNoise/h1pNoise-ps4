@@ -38,6 +38,8 @@ static void *worker(void *arg){
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Carrega X no comando para atualizar.",m.version);
 #elif defined(HARBOR_PKG_DIRECT_TEST)
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarregar e instalar sem fechar (teste).",m.version);
+#elif defined(HARBOR_PKG_PAYLOAD_TEST)
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarregar, fechar e instalar automaticamente (teste GoldHEN).",m.version);
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. No telemovel, escolhe Descarregar e instalar (teste). Requer h1pNoise Updater.",m.version);
 #else
@@ -74,6 +76,9 @@ static void *worker(void *arg){
    status("installing","PKG verificado. A instalar sem fechar a h1pNoise...");
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
    if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","PKG instalado e confirmado no disco. A app continua aberta; confirma a abertura da nova versao depois.");update_notify("h1pNoise: PKG instalado. Confirma a abertura da nova versao.");}
+#elif defined(HARBOR_PKG_PAYLOAD_TEST)
+   status("installing","PKG verificado. A entregar ao payload; a app fecha depois da confirmacao...");
+   int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
    status("installing","PKG verificado. A entregar a instalacao ao h1pNoise Updater...");
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
