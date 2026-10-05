@@ -1,5 +1,21 @@
 # Atualizações da h1pNoise
 
+## Guardar a atualização — 0.1.48
+
+A versão normal 0.1.48 volta ao canal `manual-v1` e acrescenta a escolha de
+destino antes do download: interno (`/data/pkg`) ou raiz da pen USB detetada
+(`/mnt/usb0` ou `/mnt/usb1`). Não cria pontos de montagem USB nem muda o destino
+dos torrents. Se a pen desaparecer ou a escrita falhar, o ficheiro incompleto
+não é anunciado como pronto. A assinatura, hash e identidade são verificados
+antes de disponibilizar o PKG para a instalação manual pelo GoldHEN.
+A app não fecha nem inicia instalação após o download. **Guardar outra cópia**
+permite repetir o download para outro destino, preservando a primeira cópia.
+
+Instala a 0.1.48 manualmente uma vez para sair dos canais de teste do payload.
+Para testar a escolha de destino na consola, será necessária uma atualização
+posterior anunciada no canal manual. A disponibilidade USB é consultada novamente
+antes de escrever, mesmo que a pen estivesse ligada ao abrir a página.
+
 ## Teste real 0.1.30 → 0.1.31
 
 O utilizador confirmou que a instalação por cima funciona com **Enable

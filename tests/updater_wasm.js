@@ -52,12 +52,14 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   snprintf:(d,n,s,args)=>{const result=fmt(str(s),args),bytes=Buffer.from(result);m().set(bytes.subarray(0,Math.max(0,Number(n)-1)),Number(d));if(n)m()[Number(d)+Math.min(bytes.length,Number(n)-1)]=0;return bytes.length;},
   malloc:alloc,free:()=>{},time:()=>clock++,lock:()=>{},unlock:()=>{},pthread_detach:()=>0,sleep_ms:()=>{},
   thread_start:(out,fn,arg)=>{if(cfg.threadFail)return -1;put64(out,1);instance.exports.__indirect_function_table.get(Number(fn))(arg);return 0;},
-  storage_check:(path,needed,error,cap)=>{assert.equal(str(path),'/data/pkg');assert.equal(needed,BigInt(pkg.length)+67108864n);if(cfg.noSpace){write(error,'Espaco insuficiente');return -1;}return 0;},
+  mkdir:path=>{assert.equal(str(path),'/data/pkg','never create a USB mount');return 0;},
+  stat:(path,out)=>{path=str(path);if(!cfg.usb?.includes(path))return -1;instance.exports.fixture_directory(out,cfg.usbRegularFile?0:1);return 0;},
+  storage_check:(path,needed,error,cap)=>{assert.equal(str(path),cfg.destination||'/data/pkg');assert.equal(needed,BigInt(pkg.length)+67108864n);if(cfg.noSpace){write(error,'Espaco insuficiente');return -1;}return 0;},
   fopen:(path,mode)=>{path=str(path);mode=str(mode);if(cfg.openFail)return 0n;if(mode==='rb'&&!files.has(path))return 0n;if(mode==='wb')files.set(path,Buffer.alloc(0));const id=BigInt(++handleId);handles.set(id,{path,at:0});return id;},
-  fwrite:(data,size,count,id)=>{if(cfg.writeFail)return 0n;const h=handles.get(id),n=Number(size*count),b=Buffer.from(m().subarray(Number(data),Number(data)+n));files.set(h.path,Buffer.concat([files.get(h.path),b]));h.at+=n;return count;},
+  fwrite:(data,size,count,id)=>{if(cfg.writeFail||(cfg.unplugAfterBytes&&files.get(handles.get(id).path).length>=cfg.unplugAfterBytes))return 0n;const h=handles.get(id),n=Number(size*count),b=Buffer.from(m().subarray(Number(data),Number(data)+n));files.set(h.path,Buffer.concat([files.get(h.path),b]));h.at+=n;return count;},
   fread:(data,size,count,id)=>{const h=handles.get(id),b=files.get(h.path),n=Math.min(Number(size*count),b.length-h.at);m().set(b.subarray(h.at,h.at+n),Number(data));h.at+=n;return BigInt(n)/size;},
   fflush:()=>cfg.flushFail?-1:0,ferror:()=>0,rewind:id=>{handles.get(id).at=0;},fclose:id=>{assert.ok(handles.delete(id));return 0;},
-  remove:path=>{path=str(path);assert.match(path,/^\/data\/pkg\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
+  remove:path=>{path=str(path);assert.match(path,/^(?:\/data\/pkg|\/mnt\/usb[01])\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
   rename:(a,b)=>{a=str(a);b=str(b);if(cfg.renameFail)return -1;assert.ok(files.has(a));files.set(b,files.get(a));files.delete(a);return 0;},
   sceSysmoduleLoadModuleInternal:()=>0,sceHttpSetAutoRedirect:(_id,enable)=>{assert.equal(enable,0);return 0;},
   sceHttpSetResponseHeaderMaxSize:(id,size)=>{assert.equal(id,4);assert.equal(size,32768n);headerLimits.set(id,Number(size));return 0;},
@@ -130,6 +132,28 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  for(const options of [{noSpace:true},{openFail:true},{writeFail:true},{flushFail:true},{renameFail:true},{payload:pkg.subarray(0,100)},{payload:Buffer.concat([pkg,Buffer.from([0])])},{payload:Buffer.from(pkg).fill(0,10000,10001)}]){available(options);op(1,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(registered,0);assert.equal(files.has(packagePath),false);}
  for(const offset of [0,0x40,0x74,0x430]){const b=Buffer.from(pkg);b[offset]^=1;const f=[...fields];f[6]=crypto.createHash('sha512').update(b).digest('hex');available({payload:b,manifest:signed(f)});op(1,0,'error');assert.equal(e.fixture_state(2),0);}
  ready();files.get(packagePath)[10000]^=1;op(2,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(registered,0);op(2,-1);
+ // Run the real fixed-destination resolver and USB writing path, including
+ // detachment and write/flush failures. No installation APIs may be called.
+ function saveTo(id,ret=0,phase='ready'){
+  write(error,'');const p=alloc(id.length+1);write(p,id);
+  assert.equal(e.updater_download_to(p,error,512n),ret,str(error));
+  if(!ret)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));
+  assert.equal(e.fixture_state(0),0);assert.equal(handles.size,0);assert.equal(resources.size,0);
+  assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);checks++;
+ }
+ for(const [id,root] of [['usb0','/mnt/usb0'],['usb1','/mnt/usb1']]){
+  const dest=root+packagePath.slice('/data/pkg'.length);
+  available({usb:[root],destination:root});saveTo(id);assert.deepEqual(files.get(dest),pkg);assert.equal(str(e.fixture_update_path()),dest);assert.match(str(e.fixture_message()),/Package Installer/);
+  // Copy again to internal storage, retaining the verified USB file.
+  cfg.destination='/data/pkg';saveTo('internal');assert.deepEqual(files.get(dest),pkg);assert.deepEqual(files.get(packagePath),pkg);
+  available({usb:[],destination:root});saveTo(id,0,'error');assert.match(str(e.fixture_message()),/pen USB/);assert.equal(e.fixture_state(2),0);assert.equal(requests.length,1);
+  available({usb:[root],usbRegularFile:true,destination:root});saveTo(id,0,'error');assert.equal(requests.length,1);
+  for(const options of [{noSpace:true},{writeFail:true},{flushFail:true},{unplugAfterBytes:16384},{renameFail:true}]){
+   available({usb:[root],destination:root,...options});saveTo(id,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(files.has(dest),false);if(!options.renameFail)assert.equal(files.has(dest+'.part'),false);
+  }
+ }
+ available();for(const id of ['../usb0','/mnt/usb0','usb2','USB0','internal/../',''])saveTo(id,-1);
+ e.fixture_busy(1);saveTo('internal',-1);e.fixture_busy(0);
  assert.equal(WebAssembly.Module.imports(module).some(x=>/AppPrepareOverwrite|AppUnInstall|GetPrimaryAppSlot|GetTitleIdFromPkg/.test(x.name)),false,'Updater must not import native replacement/removal APIs');
  console.log(`${checks} updater checks passed (${installed.installedVersion} -> ${installed.candidateVersion}): real Ed25519/SHA-512, bounded signed metadata, HTTPS redirect allowlist/cleanup, streamed file validation, busy/duplicate guards, re-verification, blocked in-process installation, saved PKG preservation and failure recovery.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

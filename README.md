@@ -1,4 +1,29 @@
-# h1pNoise — PS4 0.1.31
+# h1pNoise — PS4 0.1.49
+
+## Testar 0.1.48 → 0.1.49
+
+Instala o PKG 0.1.48 manualmente, procura a 0.1.49 e escolhe onde guardar.
+As duas builds têm o mesmo fluxo manual; o avanço de versão permite testar
+um download real. A 0.1.49 é a versão anunciada no canal `manual-v1`.
+
+## Atualizações para disco interno ou pen USB — 0.1.48
+
+Em **Atualizações da app**, procura uma versão e carrega **Descarregar atualização**.
+Escolhe **Disco interno**, **Pen USB 1** ou **Pen USB 2**. As opções USB só ficam
+ativas quando a PS4 deteta uma pen. Usa uma pen exFAT ou FAT32; armazenamento
+externo formatado pela PS4 para jogos não é uma pen de ficheiros PKG.
+O disco interno guarda em `/data/pkg/h1pNoise-update-<build>.pkg`; a pen guarda
+na raiz, em `/mnt/usb0` ou `/mnt/usb1`. O download e a identidade do PKG continuam
+verificados pela assinatura e SHA-512. A app mostra o caminho ao terminar.
+**Guardar outra cópia** permite descarregar para outro destino.
+
+A app permanece aberta e a instalação é manual. Fecha a h1pNoise, desliga
+**Enable Background Installation** e instala no Package Installer do GoldHEN.
+Confirma a substituição se for pedida; não desinstales primeiro. Para passar
+das versões de teste do payload para este método, instala a 0.1.48 manualmente
+uma vez. Esta versão usa o canal `manual-v1`; não usa o Updater nem o BinLoader.
+A escrita USB ainda precisa de confirmação na PS4 real. Consulta as
+[notas 0.1.48](RELEASE_NOTES_0.1.48.md).
 
 ## Teste do payload 0.1.46 → 0.1.47
 

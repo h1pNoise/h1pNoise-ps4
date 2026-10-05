@@ -1,6 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let code='',connected=false,polling=false,pending='',selectedFile=null,lastStatus=null,previous=null,toastTimer=0,filesKey='',qrCode='',editingCode=false;
+let choosingUpdateDestination=false;
 let qrOpen=!matchMedia('(max-width: 680px)').matches;
 const phases={idle:'Sem atividade',ready:'Pronto',metadata:'A obter dados do magnet',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
 const size=n=>n>=1e9?(n/1e9).toFixed(2)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(1)+' kB':Math.max(0,n)+' B';
@@ -35,7 +36,8 @@ function controls(){
  $('install').disabled=blocked||!d.loaded||d.done!==d.total||d.phase==='installed';
  $('confirm-reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
  $('update-check').disabled=blocked||!u.supported||!!u.installSent;
- $('update-download').disabled=blocked||!u.supported||!u.available||u.ready||!!u.installSent;
+ $('update-download').disabled=blocked||!u.supported||!u.available||(u.ready&&u.mode!=='manual')||!!u.installSent;
+ for(const [id,target] of [['update-internal','internal'],['update-usb0','usb0'],['update-usb1','usb1']])$(id).disabled=blocked||!u.supported||!u.available||!(target==='internal'||(d.updateDestinations||[]).some(x=>x.id===target&&x.available));
  $('update-install').disabled=$('update-confirm-install').disabled=blocked||!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||!!u.installSent;
 }
 function selectFile(file){
@@ -107,9 +109,13 @@ function render(d){
  text('update-version',(u.mode==='direct-test'?'Versão em execução: ':'Versão instalada: ')+(u.current||'0.1.10')+(u.phase==='installed'?' · Nova versão instalada: '+u.version:u.available?' · Disponível: '+u.version:''));
  text('update-message',u.message||'As atualizações da aplicação requerem uma PS4 real.');
  text('update-notes',u.notes||'');$('update-notes').hidden=!u.available||!u.notes;
- $('update-download').hidden=!u.available||u.ready||u.busy||u.task>=0;
+ $('update-download').hidden=!u.available||(u.ready&&u.mode!=='manual')||u.busy||u.task>=0;
+ if(u.busy||!u.available||!connected)choosingUpdateDestination=false;
+ $('update-destination').hidden=!choosingUpdateDestination;
+ $('update-saved-path').hidden=!u.ready||!d.updatePath;text('update-saved-path','PKG guardado em: '+(d.updatePath||''));
+ text('update-usb-help',(d.updateDestinations||[]).some(x=>x.id!=='internal'&&x.available)?'O PKG fica na raiz da pen. Mantém a pen ligada até terminar.':'Nenhuma pen detetada. Liga uma pen exFAT ou FAT32 à PS4.');
  $('update-install').hidden=!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||u.busy; $('update-confirm').hidden=true;
- text('update-download',u.mode==='direct-test'?'Descarregar e instalar sem fechar (teste)':u.mode==='runtime'?'Atualizar agora':u.mode==='installer-test'?'Descarregar e instalar (teste)':'Descarregar atualização');
+ text('update-download',u.mode==='direct-test'?'Descarregar e instalar sem fechar (teste)':u.mode==='runtime'?'Atualizar agora':u.mode==='installer-test'?'Descarregar e instalar (teste)':u.ready?'Guardar outra cópia':'Descarregar atualização');
  text('update-install',u.mode==='direct-test'?'Instalar sem fechar (teste)':u.mode==='installer-test'?'Entregar ao Updater (teste)':'Reiniciar com a nova versão');
  text('update-footnote',u.mode==='direct-test'?'Teste: descarrega, verifica e tenta instalar mantendo a app aberta. A nova versão fica disponível na próxima abertura. Não precisa do Updater.':u.mode==='runtime'?'Também podes carregar X no comando da PS4. A app descarrega, verifica e reinicia.':u.mode==='installer-test'?'Teste: instala a app auxiliar h1pNoise Updater uma vez. Depois do download verificado, ela recebe o pedido e a app principal fecha. Se houver uma falha, o PKG fica guardado.':'Fecha a app e instala pelo GoldHEN, com Enable Background Installation desligado. Confirma a substituição se for pedida.');
  $('update-progress').hidden=$('update-bytes').hidden=!u.size||(!u.ready&&u.phase!=='downloading');
@@ -170,7 +176,17 @@ $('confirm-reset').onclick=async()=>{
  if(await action('reset')){$('reset-confirm').hidden=true;selectedFile=null;$('torrent').value='';$('magnet-url').value='';text('magnet-error','');$('drop').classList.remove('selected');text('selected-name','Escolhe o teu ficheiro .torrent');text('selected-size','Arrasta para aqui ou procura um ficheiro');controls();toast('Pronto para outra transferência.');}
 };
 $('update-check').onclick=async()=>{if(!$('update-check').disabled)await action('update/check',null,'update-error');};
-$('update-download').onclick=async()=>{if(!$('update-download').disabled)await action('update/download',null,'update-error');};
+$('update-download').onclick=async()=>{
+ if($('update-download').disabled)return;
+ if(lastStatus?.update?.mode==='manual'){choosingUpdateDestination=true;$('update-destination').hidden=false;$('update-internal').focus();controls();}
+ else await action('update/download',null,'update-error');
+};
+for(const [id,target] of [['update-internal','internal'],['update-usb0','usb0'],['update-usb1','usb1']])$(id).onclick=async()=>{
+ if($(id).disabled)return;
+ choosingUpdateDestination=false;$('update-destination').hidden=true;
+ await action('update/download',target,'update-error');
+};
+$('update-destination-cancel').onclick=()=>{choosingUpdateDestination=false;$('update-destination').hidden=true;$('update-download').focus();};
 $('update-install').onclick=async()=>{if(!$('update-install').disabled)await action('update/install',null,'update-error');};
 $('update-cancel').onclick=()=>{$('update-confirm').hidden=true;};
 $('update-confirm-install').onclick=()=>{};

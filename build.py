@@ -60,7 +60,7 @@ def main():
         config=build/'installer-test-version.h'
         config.write_text('#define H1PNOISE_VERSION_H\n#define APP_BUILD '+str(number)+'\n'+''.join('#define '+k+' "'+v+'"\n' for k,v in VERSION.items()))
         extra=['-DHARBOR_PKG_PAYLOAD_TEST' if a.pkg_payload_test else '-DHARBOR_PKG_DIRECT_TEST' if a.pkg_direct_test else '-DHARBOR_PKG_INSTALLER_TEST','-include',config]
-    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
+    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_destination.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
     if a.host:
         os.environ.setdefault('ZIG_GLOBAL_CACHE_DIR',str(build/'zig-global'))
         os.environ.setdefault('ZIG_LOCAL_CACHE_DIR',str(build/'zig-local'))

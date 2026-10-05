@@ -43,7 +43,7 @@ static const unsigned char UPDATE_PUBLIC_KEY[32]={'''+','.join(str(b) for b in p
 #define APP_TITLE_ID "HBRW00001"
 #define APP_CONTENT_ID "IV0000-HBRW00001_00-HARBORPS40000000"
 ''')
-sources=['updater.c','update_http.c','update_platform.c','ps4_user.c','ps4_bgft.c','installer_access.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
+sources=['updater.c','update_destination.c','update_http.c','update_platform.c','ps4_user.c','ps4_bgft.c','installer_access.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
 if a.runtime:sources.extend(['runtime_update.c','bootstrap.c'])
 if a.handoff_test:sources.append('pkg_update_handoff.c')
 if a.direct_test:sources.append('pkg_update_direct.c')
