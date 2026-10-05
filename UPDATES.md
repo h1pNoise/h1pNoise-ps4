@@ -123,3 +123,7 @@ As versões de recuperação anteriores à 0.1.30 são distribuídas para
 instalação manual, sem atualizar o canal legado. As novas versões podem
 ser anunciadas apenas no canal separado `manual-v1`. Mantém os certificados
 HTTPS ativos, a validação da assinatura, SHA-512, identidade e versão do PKG.
+
+## USB a partir de 0.1.50
+
+A selecao USB permanece disponivel mesmo quando a pasta nao e visivel na raiz isolada da app. O acesso e verificado antes do download. A pasta real e aberta com acesso temporario quando necessario; as credenciais sao restauradas antes de iniciar a rede. As operacoes no PKG ficam ancoradas ao diretorio aberto, com nomes fixos e sem criar pastas USB. O registo de falha de acesso e `/data/pkg/usb-debug.log`. A instalacao continua manual pelo GoldHEN.

@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 int update_file_verify(const char *path,const UpdateManifest *m,char *error,size_t cap){
- FILE *f=fopen(path,"rb");if(!f){snprintf(error,cap,"A atualizacao descarregada ja nao esta disponivel.");return -1;}
+ return update_file_verify_open(fopen(path,"rb"),m,error,cap);
+}
+int update_file_verify_open(FILE *f,const UpdateManifest *m,char *error,size_t cap){
+ if(!f){snprintf(error,cap,"A atualizacao descarregada ja nao esta disponivel.");return -1;}
  unsigned char buffer[32768],digest[64];crypto_sha512_ctx hash;crypto_sha512_init(&hash);uint64_t total=0;size_t n;
  while((n=fread(buffer,1,sizeof(buffer),f))){if(total>m->size||n>m->size-total){fclose(f);snprintf(error,cap,"O tamanho da atualizacao mudou.");return -1;}total+=n;crypto_sha512_update(&hash,buffer,n);}
  int io_error=ferror(f);crypto_sha512_final(&hash,digest);

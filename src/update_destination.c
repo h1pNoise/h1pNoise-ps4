@@ -1,4 +1,52 @@
 #include "app.h"
+#if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
+#include "installer_access.h"
+#include "vendor/libjbc/jailbreak.h"
+#include <sys/syscall.h>
+/* The SDK's renameat/unlinkat return ENOSYS on PS4. Use the kernel ABI,
+   relative to an opened USB directory, after restoring the app's roots. */
+#ifdef HARBOR_USB_TEST
+extern int update_usb_native(int,int,const char *,int,const char *);
+#else
+static int update_usb_native(int number,int fd,const char *name,int value,const char *other){
+ long result;unsigned char failed;register long fourth __asm__("r10")=(long)other;
+ __asm__ volatile("syscall; setc %1":"=a"(result),"=qm"(failed):"a"((long)number),"D"((long)fd),"S"(name),"d"((long)value),"r"(fourth):"rcx","r11","memory");
+ if(failed){errno=(int)result;return -1;}return (int)result;
+}
+#endif
+static int usb_access_failed;
+static int usb_directory(int id,char *error,size_t cap){
+ if(usb_access_failed){snprintf(error,cap,"Fecha e volta a abrir a app para restaurar o acesso USB.");return -1;}
+ const char *root=update_destination_root(id);int fd=open(root,O_RDONLY|O_DIRECTORY);
+ if(fd>=0)return fd;
+ int direct_error=errno,rc=-1,activated=-999,restored=-999;
+ struct jbc_cred saved,elevated;
+ if(installer_credentials_trylock()){snprintf(error,cap,"O acesso ao disco esta ocupado. Tenta novamente.");return -1;}
+ if(jbc_get_cred(&saved)||((elevated=saved),jbc_jailbreak_cred(&elevated))){
+  snprintf(error,cap,"Nao foi possivel obter acesso a %s (erro %d). Confirma o GoldHEN e a pen.",root,direct_error);
+ }else{
+  activated=jbc_set_cred(&elevated);
+  if(!activated){fd=open(root,O_RDONLY|O_DIRECTORY);rc=fd>=0?0:errno;}
+  /* Activation can fail partially. Restore before any network/file stream. */
+  restored=jbc_set_cred(&saved);
+  if(restored){usb_access_failed=1;if(fd>=0)close(fd);fd=-1;snprintf(error,cap,"Falha ao restaurar o acesso. Fecha e volta a abrir a app.");}
+  else if(activated||fd<0){fd=-1;snprintf(error,cap,"A pen USB em %s nao esta acessivel (erro %d). Confirma exFAT/FAT32 e volta a ligar a pen.",root,rc);}
+ }
+ installer_credentials_unlock();
+#ifndef HARBOR_USB_TEST
+ FILE *log=fopen("/data/pkg/usb-debug.log","a");
+ if(log){fprintf(log,"usb=%s direct=%d activate=%d open=%d restore=%d\n",root,direct_error,activated,rc,restored);fclose(log);}
+#endif
+ return fd;
+}
+/* Only deterministic update filenames are accepted for directory-relative I/O. */
+static const char *usb_name(const char *path){
+ const char *name=strrchr(path,'/');if(!name)return NULL;name++;
+ if(strncmp(name,"h1pNoise-update-",16))return NULL;
+ const char *p=name+16;if(*p<'0'||*p>'9')return NULL;while(*p>='0'&&*p<='9')p++;
+ return !strcmp(p,".pkg")||!strcmp(p,".pkg.part")?name:NULL;
+}
+#endif
 int update_destination_id(const char *id){
  if(!strcmp(id,"internal"))return 0;
  if(!strcmp(id,"usb0"))return 1;
@@ -15,13 +63,51 @@ int update_destination_available(int id){
  /* USB destinations here belong to a PS4, not to the Windows test host. */
  return 0;
 #else
- struct stat st;return !stat(root,&st)&&S_ISDIR(st.st_mode);
+ /* Opening a directory avoids depending on the SDK's struct stat ABI. */
+ int fd=open(root,O_RDONLY|O_DIRECTORY);if(fd<0)return 0;close(fd);return 1;
 #endif
 }
-int update_destination_prepare(int id,char *error,size_t cap){
+int update_destination_prepare(int id,int *directory,char *error,size_t cap){
+ *directory=-1;
  const char *root=update_destination_root(id);
  if(!root){snprintf(error,cap,"Destino de atualizacao invalido.");return -1;}
- if(id&&!update_destination_available(id)){snprintf(error,cap,"A pen USB selecionada nao esta disponivel. Liga uma pen exFAT ou FAT32 e tenta novamente.");return -1;}
+ if(id){
+#if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
+  *directory=usb_directory(id,error,cap);if(*directory<0)return -1;
+#else
+  snprintf(error,cap,"Guardar numa pen USB requer uma PS4 real.");return -1;
+#endif
+ }
  if(!id)make_dir(root);
  return 0;
+}
+FILE *update_destination_file(int directory,const char *path,const char *mode){
+#if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
+ if(directory>=0){
+  const char *name=usb_name(path);if(!name)return NULL;
+  if(strcmp(mode,"wb")&&strcmp(mode,"rb"))return NULL;
+  int flags=(!strcmp(mode,"wb")?O_WRONLY|O_CREAT|O_TRUNC:O_RDONLY)|O_NOFOLLOW;
+  int fd=update_usb_native(SYS_openat,directory,name,flags,(const char *)(uintptr_t)0666);
+  if(fd<0)return NULL;FILE *f=fdopen(fd,mode);if(!f)close(fd);return f;
+ }
+#else
+ (void)directory;
+#endif
+ return fopen(path,mode);
+}
+int update_destination_remove(int directory,const char *path){
+#if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
+ if(directory>=0){const char *name=usb_name(path);return name?update_usb_native(SYS_unlinkat,directory,name,0,NULL):-1;}
+#else
+ (void)directory;
+#endif
+ return remove(path);
+}
+int update_destination_rename(int directory,const char *from,const char *to){
+#if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
+ if(directory>=0){const char *a=usb_name(from),*b=usb_name(to);return a&&b?update_usb_native(SYS_renameat,directory,a,directory,b):-1;}
+#else
+ (void)directory;
+#endif
+ return rename(from,to);
 }

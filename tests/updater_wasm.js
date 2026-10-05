@@ -21,6 +21,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/manual-v1\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
+ let usbElevated=false,directories,descriptors;
  let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared;
  const m=()=>new Uint8Array(instance.exports.memory.buffer),v=()=>new DataView(m().buffer);
  const str=p=>{p=Number(p);let end=p;while(m()[end])end++;return Buffer.from(m().subarray(p,end)).toString();};
@@ -34,8 +35,18 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   memcpy:(d,s,n)=>{m().copyWithin(Number(d),Number(s),Number(s)+Number(n));return d;},
   memmove:(d,s,n)=>{m().copyWithin(Number(d),Number(s),Number(s)+Number(n));return d;},
   memset:(d,c,n)=>{m().fill(c,Number(d),Number(d)+Number(n));return d;},
-  open:()=>{throw Error('Unexpected installer initialization');},close:()=>0,
-  jbc_jailbreak_cred:()=>{throw Error('Unexpected filesystem root change');},jbc_set_cred:()=>{throw Error('Unexpected filesystem root change');},jbc_resolve_error:()=>0,
+  __errno_location:()=>BigInt(base+1024),
+  open:(path,flags)=>{path=str(path);assert.match(path,/^\/mnt\/usb[01]$/);assert.equal(flags,131072);if(!cfg.usb?.includes(path)||cfg.usbRegularFile||(cfg.usbSandbox&&!usbElevated)){put32(BigInt(base+1024),2);return -1;}const id=++handleId;directories.set(id,path);return id;},
+  close:id=>{assert.ok(directories.delete(id)||descriptors.delete(id),'close unknown descriptor');return 0;},
+  jbc_jailbreak_cred:p=>{if(cfg.usbResolveFail)return -1;m().fill(0,Number(p),Number(p)+80);return 0;},
+  jbc_set_cred:p=>{const restoring=Buffer.from(m().subarray(Number(p),Number(p)+80)).equals(savedCred);usbElevated=!restoring;if(restoring&&cfg.usbRestoreFail)return -1;if(!restoring&&cfg.usbActivateFail)return -1;return 0;},jbc_resolve_error:()=>0,
+  update_usb_native:(number,fd,name,value,other)=>{
+   assert.equal(usbElevated,false,'roots must be restored before USB file operations');assert.ok(directories.has(fd));name=str(name);assert.match(name,/^h1pNoise-update-\d+\.pkg(?:\.part)?$/);const path=directories.get(fd)+'/'+name;
+   if(number===499){if(cfg.openFail)return -1;if(value&512)files.set(path,Buffer.alloc(0));if(!files.has(path))return -1;const id=++handleId;descriptors.set(id,path);return id;}
+   if(number===503){assert.equal(value,0);files.delete(path);return 0;}
+   assert.equal(number,501);assert.equal(value,fd);if(cfg.renameFail)return -1;const to=directories.get(fd)+'/'+str(other);assert.ok(files.has(path));files.set(to,files.get(path));files.delete(path);return 0;
+  },
+  fdopen:(fd,mode)=>{assert.equal(usbElevated,false);assert.ok(descriptors.has(fd));const path=descriptors.get(fd);descriptors.delete(fd);const id=BigInt(++handleId);handles.set(id,{path,at:0});return id;},
   jbc_get_cred:p=>{m().fill(17,Number(p),Number(p)+80);put64(p+56n,0x3800000000000011n);put64(p+64n,0x1000n);put64(p+72n,0x2000n);savedCred=Buffer.from(m().subarray(Number(p),Number(p)+80));return 0;},
   jbc_set_auth:p=>{
    p=Number(p);assert.deepEqual(Buffer.from(m().subarray(p,p+56)),savedCred.subarray(0,56),'filesystem/UID changed');
@@ -45,6 +56,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   },
   memcmp:(a,b,n)=>{for(let i=0;i<Number(n);i++){const d=m()[Number(a)+i]-m()[Number(b)+i];if(d)return d;}return 0;},
   memchr:(p,c,n)=>{for(let i=0;i<Number(n);i++)if(m()[Number(p)+i]===c)return p+BigInt(i);return 0n;},
+  strrchr:(p,c)=>{const i=str(p).lastIndexOf(String.fromCharCode(c));return i<0?0n:p+BigInt(i);},
   strlen:p=>BigInt(Buffer.byteLength(str(p))),strcmp:(a,b)=>str(a).localeCompare(str(b)),
   strncmp:(a,b,n)=>str(a).slice(0,Number(n)).localeCompare(str(b).slice(0,Number(n))),
   strncasecmp:(a,b,n)=>str(a).slice(0,Number(n)).toLowerCase().localeCompare(str(b).slice(0,Number(n)).toLowerCase()),
@@ -65,6 +77,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceHttpSetResponseHeaderMaxSize:(id,size)=>{assert.equal(id,4);assert.equal(size,32768n);headerLimits.set(id,Number(size));return 0;},
   sceHttpAddRequestHeader:(_id,name,val)=>{assert.equal(str(name),'Accept-Encoding');assert.equal(str(val),'identity');return 0;},
   sceHttpSendRequest:id=>{
+   assert.equal(usbElevated,false,'network ran with changed roots');
    requests.push(requestUrl);bodyOffset=0;
    reply=cfg.redirect?.(requestUrl)||{status:cfg.status||200,body:requestUrl===feed?cfg.manifest:cfg.payload};
    if(cfg.sendError)return cfg.sendError|0;
@@ -102,8 +115,8 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
- function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};usbElevated=false;directories=new Map();descriptors=new Map();privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')]]);handles=new Map();handleId=0;requests=[];clock=1000n;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
+ function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');assert.equal(directories.size,0,'directory cleanup');assert.equal(descriptors.size,0,'descriptor cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  function ready(options={}){available(options);op(1,0,'ready');assert.equal(e.fixture_state(2),1);assert.equal(e.fixture_done(),BigInt(pkg.length));assert.deepEqual(files.get(packagePath),pkg);}
  ready();op(2,0,'error');assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);assert.equal(slotQueries,0);assert.equal(e.fixture_state(3),-1);assert.equal(e.fixture_state(2),1);assert.match(str(e.fixture_message()),/instalacao pela propria app foi suspensa/);assert.ok(str(e.fixture_message()).includes(packagePath));assert.deepEqual(files.get(packagePath),pkg);op(2,0,'error');assert.equal(registered,0);
@@ -138,22 +151,23 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   write(error,'');const p=alloc(id.length+1);write(p,id);
   assert.equal(e.updater_download_to(p,error,512n),ret,str(error));
   if(!ret)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));
-  assert.equal(e.fixture_state(0),0);assert.equal(handles.size,0);assert.equal(resources.size,0);
+  assert.equal(e.fixture_state(0),0);assert.equal(handles.size,0);assert.equal(directories.size,0);assert.equal(descriptors.size,0);if(!cfg.usbRestoreFail)assert.equal(usbElevated,false);assert.equal(resources.size,0);
   assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);checks++;
  }
  for(const [id,root] of [['usb0','/mnt/usb0'],['usb1','/mnt/usb1']]){
   const dest=root+packagePath.slice('/data/pkg'.length);
-  available({usb:[root],destination:root});saveTo(id);assert.deepEqual(files.get(dest),pkg);assert.equal(str(e.fixture_update_path()),dest);assert.match(str(e.fixture_message()),/Package Installer/);
+  available({usb:[root],usbSandbox:true,destination:root});saveTo(id);assert.deepEqual(files.get(dest),pkg);assert.equal(str(e.fixture_update_path()),dest);assert.match(str(e.fixture_message()),/Package Installer/);
   // Copy again to internal storage, retaining the verified USB file.
   cfg.destination='/data/pkg';saveTo('internal');assert.deepEqual(files.get(dest),pkg);assert.deepEqual(files.get(packagePath),pkg);
   available({usb:[],destination:root});saveTo(id,0,'error');assert.match(str(e.fixture_message()),/pen USB/);assert.equal(e.fixture_state(2),0);assert.equal(requests.length,1);
   available({usb:[root],usbRegularFile:true,destination:root});saveTo(id,0,'error');assert.equal(requests.length,1);
-  for(const options of [{noSpace:true},{writeFail:true},{flushFail:true},{unplugAfterBytes:16384},{renameFail:true}]){
+  for(const options of [{usbResolveFail:true,usbSandbox:true},{usbActivateFail:true,usbSandbox:true},{openFail:true},{noSpace:true},{writeFail:true},{flushFail:true},{unplugAfterBytes:16384},{renameFail:true}]){
    available({usb:[root],destination:root,...options});saveTo(id,0,'error');assert.equal(e.fixture_state(2),0);assert.equal(files.has(dest),false);if(!options.renameFail)assert.equal(files.has(dest+'.part'),false);
   }
  }
  available();for(const id of ['../usb0','/mnt/usb0','usb2','USB0','internal/../',''])saveTo(id,-1);
  e.fixture_busy(1);saveTo('internal',-1);e.fixture_busy(0);
+ available({usb:['/mnt/usb0'],usbSandbox:true,usbRestoreFail:true,destination:'/mnt/usb0'});saveTo('usb0',0,'error');assert.equal(requests.length,1);assert.match(str(e.fixture_message()),/restaurar/);assert.equal(e.fixture_state(2),0);
  assert.equal(WebAssembly.Module.imports(module).some(x=>/AppPrepareOverwrite|AppUnInstall|GetPrimaryAppSlot|GetTitleIdFromPkg/.test(x.name)),false,'Updater must not import native replacement/removal APIs');
  console.log(`${checks} updater checks passed (${installed.installedVersion} -> ${installed.candidateVersion}): real Ed25519/SHA-512, bounded signed metadata, HTTPS redirect allowlist/cleanup, streamed file validation, busy/duplicate guards, re-verification, blocked in-process installation, saved PKG preservation and failure recovery.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -52,7 +52,7 @@ if a.payload_test:
  if not a.payload_bin:p.error('--payload-test requires --payload-bin from the real build')
  blob=a.payload_bin.resolve().read_bytes()
  stub=build/'payload-test-data.c';stub.write_text('#include <stddef.h>\nconst unsigned char update_payload[]={'+','.join(map(str,blob))+'};const size_t update_payload_size=sizeof(update_payload);\n');sources.append(str(stub))
-cmd=[a.llvm/'clang.exe','--target=wasm64','-O1','-nostdlib','-D__ORBIS__','-isystem',a.sdk/'include','-include',config,'-Wl,--no-entry','-Wl,--export-all','-Wl,--export-table','-Wl,--allow-undefined','-Wl,-z,stack-size=262144',*[(root/'src'/s if not Path(s).is_absolute() else Path(s)) for s in sources],root/'tests/updater_fixture.c','-o',build/'updater-test.wasm']
+cmd=[a.llvm/'clang.exe','--target=wasm64','-O1','-nostdlib','-D__ORBIS__','-DHARBOR_USB_TEST','-isystem',a.sdk/'include','-include',config,'-Wl,--no-entry','-Wl,--export-all','-Wl,--export-table','-Wl,--allow-undefined','-Wl,-z,stack-size=262144',*[(root/'src'/s if not Path(s).is_absolute() else Path(s)) for s in sources],root/'tests/updater_fixture.c','-o',build/'updater-test.wasm']
 if a.runtime:cmd[2:2]=['-DHARBOR_RUNTIME_UPDATES','-DHARBOR_RUNTIME_TEST']
 if a.handoff_test:cmd[2:2]=['-DHARBOR_PKG_INSTALLER_TEST']
 if a.direct_test:cmd[2:2]=['-DHARBOR_PKG_DIRECT_TEST']

@@ -27,7 +27,7 @@ int updater_supported(void){
 #endif
 }
 static void *worker(void *arg){
- int op=(int)(intptr_t)arg,rc=-1;char error[512]={0};UpdateManifest m;
+ int op=(int)(intptr_t)arg,rc=-1,directory=-1;char error[512]={0};UpdateManifest m;
  if(op==0){
   ManifestBuffer b={0};if(update_http_get(UPDATE_FEED_URL,sizeof(b.data),manifest_sink,&b,error,sizeof(error))||update_manifest_read(b.data,b.used,UPDATE_PUBLIC_KEY,&m,error,sizeof(error)))goto done;
   if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status(m.build<APP_BUILD?"channel-old":"current",m.build<APP_BUILD?"O canal anuncia uma versao anterior a instalada. Consulta as releases no GitHub.":"Tens a versao mais recente deste canal de atualizacoes.");rc=0;goto done;}
@@ -53,18 +53,18 @@ static void *worker(void *arg){
    mkdir("/data/harbor",0777);mkdir(RUNTIME_ROOT,0777);
    if(storage_check(RUNTIME_ROOT,m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
 #else
-   if(update_destination_prepare(destination,error,sizeof(error))||storage_check(update_destination_root(destination),m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
+   if(update_destination_prepare(destination,&directory,error,sizeof(error))||storage_check(update_destination_root(destination),m.size+64*1024*1024ULL,error,sizeof(error)))goto done;
 #endif
-   char part[720];snprintf(part,sizeof(part),"%s.part",path);Download d={0};d.file=fopen(part,"wb");if(!d.file){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao no destino escolhido. Confirma a pen e o acesso de escrita.");goto done;}
+   char part[720];snprintf(part,sizeof(part),"%s.part",path);Download d={0};d.file=update_destination_file(directory,part,"wb");if(!d.file){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao no destino escolhido. Confirma a pen e o acesso de escrita.");goto done;}
    crypto_sha512_init(&d.hash);int net=update_http_get(m.url,m.size,file_sink,&d,error,sizeof(error));int io=fflush(d.file);if(fclose(d.file))io=-1;
    unsigned char digest[64];crypto_sha512_final(&d.hash,digest);
-   if(net||io||d.done!=m.size||crypto_verify64(digest,m.sha512)){remove(part);if(!*error)snprintf(error,sizeof(error),"Download incompleto ou falha de escrita. Confirma o destino e tenta novamente. A versao instalada nao foi alterada.");goto done;}
-   if(update_file_verify(part,&m,error,sizeof(error))){remove(part);goto done;}
+   if(net||io||d.done!=m.size||crypto_verify64(digest,m.sha512)){update_destination_remove(directory,part);if(!*error)snprintf(error,sizeof(error),"Download incompleto ou falha de escrita. Confirma o destino e tenta novamente. A versao instalada nao foi alterada.");goto done;}
+   if(update_file_verify_open(update_destination_file(directory,part,"rb"),&m,error,sizeof(error))){update_destination_remove(directory,part);goto done;}
    /* Only our deterministic update file can be replaced; never torrent content. */
 #ifdef _WIN32
    remove(path);
 #endif
-   if(rename(part,path)){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao verificada.");goto done;}
+   if(update_destination_rename(directory,part,path)){snprintf(error,sizeof(error),"Nao foi possivel guardar a atualizacao verificada.");goto done;}
    lock(&app.mu);app.update.ready=1;snprintf(app.update.path,sizeof(app.update.path),"%s",path);unlock(&app.mu);
 #ifdef HARBOR_RUNTIME_UPDATES
    if(runtime_store_manifest(app.update.signed_manifest,app.update.signed_size,m.build,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
@@ -96,6 +96,9 @@ static void *worker(void *arg){
   }
  }
 done:
+#ifndef _WIN32
+ if(directory>=0)close(directory);
+#endif
  if(rc){status("error",*error?error:"Nao foi possivel concluir a atualizacao.");}
  lock(&app.mu);app.update.busy=0;unlock(&app.mu);return NULL;
 }

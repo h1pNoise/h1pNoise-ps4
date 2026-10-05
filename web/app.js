@@ -37,7 +37,7 @@ function controls(){
  $('confirm-reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
  $('update-check').disabled=blocked||!u.supported||!!u.installSent;
  $('update-download').disabled=blocked||!u.supported||!u.available||(u.ready&&u.mode!=='manual')||!!u.installSent;
- for(const [id,target] of [['update-internal','internal'],['update-usb0','usb0'],['update-usb1','usb1']])$(id).disabled=blocked||!u.supported||!u.available||!(target==='internal'||(d.updateDestinations||[]).some(x=>x.id===target&&x.available));
+ for(const id of ['update-internal','update-usb0','update-usb1'])$(id).disabled=blocked||!u.supported||!u.available;
  $('update-install').disabled=$('update-confirm-install').disabled=blocked||!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||!!u.installSent;
 }
 function selectFile(file){
@@ -113,7 +113,7 @@ function render(d){
  if(u.busy||!u.available||!connected)choosingUpdateDestination=false;
  $('update-destination').hidden=!choosingUpdateDestination;
  $('update-saved-path').hidden=!u.ready||!d.updatePath;text('update-saved-path','PKG guardado em: '+(d.updatePath||''));
- text('update-usb-help',(d.updateDestinations||[]).some(x=>x.id!=='internal'&&x.available)?'O PKG fica na raiz da pen. Mantém a pen ligada até terminar.':'Nenhuma pen detetada. Liga uma pen exFAT ou FAT32 à PS4.');
+ text('update-usb-help',(d.updateDestinations||[]).some(x=>x.id!=='internal'&&x.available)?'O PKG fica na raiz da pen. Mantém a pen ligada até terminar.':'Escolhe a pen ligada à PS4. A app verifica o acesso antes de descarregar; se falhar, mostra o motivo.');
  $('update-install').hidden=!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||u.busy; $('update-confirm').hidden=true;
  text('update-download',u.mode==='direct-test'?'Descarregar e instalar sem fechar (teste)':u.mode==='runtime'?'Atualizar agora':u.mode==='installer-test'?'Descarregar e instalar (teste)':u.ready?'Guardar outra cópia':'Descarregar atualização');
  text('update-install',u.mode==='direct-test'?'Instalar sem fechar (teste)':u.mode==='installer-test'?'Entregar ao Updater (teste)':'Reiniciar com a nova versão');

@@ -1,6 +1,7 @@
 #ifndef H1PNOISE_PKG_UPDATE_H
 #define H1PNOISE_PKG_UPDATE_H
 #include "update_manifest.h"
+#include <stdio.h>
 #define PKG_UPDATER_TITLE "HBRU00001"
 #ifdef HARBOR_PKG_PAYLOAD_TEST
 #define PKG_UPDATE_ROOT "/data/harbor/pkg-payload-v4-updater"
@@ -18,6 +19,7 @@ typedef struct {
  void (*report)(const char *stage,int result);
 } PkgUpdateOps;
 int update_file_verify(const char *,const UpdateManifest *,char *,size_t);
+int update_file_verify_open(FILE *,const UpdateManifest *,char *,size_t);
 int pkg_update_request_read(const unsigned char *,size_t,PkgUpdateRequest *);
 int pkg_update_run(const unsigned char *,size_t,const unsigned char key[32],
  const PkgUpdateRequest *,const PkgUpdateOps *,char *,size_t);
