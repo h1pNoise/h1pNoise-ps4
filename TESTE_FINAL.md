@@ -1,15 +1,15 @@
-# Teste final — 0.1.56 → 0.1.58
+# Teste final — 0.1.56 → 0.1.59
 
-A 0.1.58 é a candidata de teste antes da h1pNoise 1.0.0. Mantém as funções da 0.1.56 e atualiza os textos e instruções. Faz os testes por esta ordem e indica **OK** ou a mensagem exata da falha. Se estes pontos já foram confirmados na 0.1.56, basta repetir na candidata para verificar que continuam a funcionar.
+A 0.1.59 é a candidata de teste antes da h1pNoise 1.0.0. Mantém as funções da 0.1.56 e atualiza os textos e instruções. Faz os testes por esta ordem e indica **OK** ou a mensagem exata da falha. Se estes pontos já foram confirmados na 0.1.56, basta repetir na candidata para verificar que continuam a funcionar.
 
 ## 1. Atualizar para a candidata
 
 1. Abre a **0.1.56** e liga o telemóvel pelo QR.
-2. Em Atualizações da app, carrega **Procurar atualização**: deve aparecer **0.1.58**.
+2. Em Atualizações da app, carrega **Procurar atualização**: deve aparecer **0.1.59**.
 3. Descarrega para **disco interno**. Confirma que termina e mostra `/data/pkg/h1pNoise-update-68.pkg` como verificado.
 4. Usa **Guardar outra cópia** e escolhe a **pen USB**. Confirma que o mesmo PKG aparece na raiz da pen.
 5. Fecha a app e instala um destes PKG pelo Package Installer do GoldHEN, com **Enable Background Installation desligado**. Aceita substituir; não desinstales primeiro.
-6. Abre a app e atualiza a página do telemóvel. Deve aparecer **0.1.58** na televisão e nas informações da página. Procurar atualização deve indicar que está atualizada.
+6. Abre a app e atualiza a página do telemóvel. Deve aparecer **0.1.59** na televisão e nas informações da página. Procurar atualização deve indicar que está atualizada.
 
 ## 2. Ligação, cor e disco
 
@@ -38,3 +38,10 @@ Mantém a PS4 ligada e a app aberta para torrents/magnets. Não precisas de test
 Indica o firmware e a versão GoldHEN, e o resultado de: **atualização interna / USB / instalação por cima / QR e código / espaço livre / torrent / magnet / link PKG / limpeza / reabertura**. Nos pontos já testados, basta OK. Qualquer erro: copia a mensagem e diz em que passo apareceu.
 
 Depois desta confirmação, publicamos a **1.0.0** como Latest, com o canal assinado atualizado e as instruções definitivas. Compatibilidade noutros firmwares só é anunciada depois de testes próprios.
+
+## Cor sincronizada com a televisão
+
+1. Liga a página à PS4, abre **Cor** e escolhe azul ou roxo. Os detalhes da televisão devem mudar sem fechar a app.
+2. Testa uma cor personalizada escura e **Voltar ao verde**. O QR e os avisos devem continuar legíveis.
+3. Fecha e reabre a h1pNoise: a televisão e a página devem manter a última cor guardada.
+4. Abre a página noutro dispositivo: depois de emparelhar, deve receber a cor da consola.

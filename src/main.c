@@ -1,4 +1,5 @@
 #include "app.h"
+#include "appearance.h"
 #include <signal.h>
 #ifdef HARBOR_RUNTIME_UPDATES
 #include "runtime_update.h"
@@ -14,7 +15,7 @@ int main(int argc,char **argv){
 #else
  (void)argc;(void)argv;strcpy(app.root,"/data/pkg");signal(SIGPIPE,SIG_IGN);
 #endif
- make_dir(app.root);int rc=platform_init(app.ip);uint16_t secret;
+ make_dir(app.root);app.accent=accent_load(app.root);int rc=platform_init(app.ip);uint16_t secret;
  /* Rejection sampling avoids favouring some four-digit codes. */
  do{if(random_bytes(&secret,sizeof(secret)))return 1;}while(secret>=60000);
  snprintf(app.pin,sizeof(app.pin),"%04u",(unsigned)(secret%10000));

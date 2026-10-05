@@ -134,6 +134,7 @@ void screen_run(const char *ip,const char *pin){
 #endif
   snprintf(state.ip,sizeof(state.ip),"%s",ip);snprintf(state.pin,sizeof(state.pin),"%s",pin);
   lock(&app.mu);
+  state.accent=app.accent;
   state.loaded=app.loaded||app.magnet_pending;state.busy=app.busy;state.installing=!strcmp(app.phase,"installing");
   state.done=state.installing?app.install_done:app.done;state.total=state.installing?app.install_total:app.torrent.total;
   state.peers=app.peers;state.direct_busy=app.direct_busy;state.direct_task=app.direct_task;

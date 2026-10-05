@@ -2,6 +2,7 @@
 #define H1PNOISE_DISPLAY_H
 #include <stdint.h>
 typedef struct {
+ uint32_t accent;
  int loaded,busy,installing,peers,space_known,emulator,direct_busy,direct_task,frame,port;
  uint64_t done,total,available;
  char name[256],message[512],phase[40],direct_phase[16],ip[16],pin[17];

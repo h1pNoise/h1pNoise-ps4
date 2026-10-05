@@ -108,6 +108,33 @@ class Integration(unittest.TestCase):
         return code,data
     def command(self,p):
         status,data=self.api('/api/'+p,method='POST');self.assertEqual(status,200,data)
+    def test_accent_persistence_validation_and_write_failure(self):
+        self.assertEqual(self.api('/api/accent',b'#8cc8ff','POST',auth=False)[0],401)
+        self.assertEqual(self.api('/api/accent',b'#8cc8ff','POST',{'Origin':'https://example.invalid'})[0],403)
+        self.assertEqual(self.api('/api/accent')[0],405)
+        for invalid in [b'',b'#fff',b'#ffffffx',b'#12\x00345',b'../pkg!',b'#GG00ff']:
+            self.assertEqual(self.api('/api/accent',invalid,'POST')[0],400)
+        sentinel=self.data_dir/'other-game.pkg';sentinel.write_bytes(b'preserve this PKG')
+        self.assertEqual(self.api('/api/accent',b'#A10fB8','POST')[0],200)
+        self.assertEqual(self.api('/api/status')[1]['accent'],'#a10fb8')
+        self.assertEqual((self.data_dir/'appearance.txt').read_bytes(),b'#a10fb8')
+        self.assertFalse((self.data_dir/'appearance.tmp').exists())
+        self.shutdown();self.launch()
+        self.assertEqual(self.api('/api/status')[1]['accent'],'#a10fb8')
+        # An unwritable temporary destination must leave the previous colour intact.
+        blocked=self.data_dir/'appearance.tmp';blocked.mkdir()
+        try:
+            self.assertEqual(self.api('/api/accent',b'#ffffff','POST')[0],500)
+            self.assertEqual(self.api('/api/status')[1]['accent'],'#a10fb8')
+            self.assertEqual((self.data_dir/'appearance.txt').read_bytes(),b'#a10fb8')
+        finally:blocked.rmdir()
+        self.assertEqual(sentinel.read_bytes(),b'preserve this PKG');sentinel.unlink()
+        self.shutdown();(self.data_dir/'appearance.txt').write_bytes(b'#123456extra');self.launch()
+        self.assertEqual(self.api('/api/status')[1]['accent'],'#9debcf')
+        self.assertEqual(self.api('/api/accent',b'#000000','POST')[0],200)
+        self.shutdown();self.launch()
+        self.assertEqual(self.api('/api/status')[1]['accent'],'#000000')
+        self.assertEqual(self.api('/api/accent',b'#9debcf','POST')[0],200)
     def wait(self,phase,timeout=15):
         until=time.monotonic()+timeout
         while time.monotonic()<until:

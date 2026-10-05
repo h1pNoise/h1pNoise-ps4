@@ -2,7 +2,7 @@
 
 Central de transferências para PS4 com GoldHEN. Liga o telemóvel pelo QR ou pelo código de quatro números para enviar torrents, magnets e links diretos PKG, acompanhar o progresso e descarregar atualizações da app.
 
-**0.1.58: teste antes da 1.0.0.** O utilizador confirmou o funcionamento da 0.1.56 na sua consola. Esta candidata acrescenta a escolha de cor à apresentação; mantém o mesmo motor de transferências, acesso USB e instalação manual das atualizações. A compatibilidade reportada é PS4 13.50 com GoldHEN. Outros firmwares precisam de confirmação própria.
+**0.1.59: teste antes da 1.0.0.** O utilizador confirmou o funcionamento da 0.1.56 na sua consola. Esta candidata acrescenta a escolha de cor à apresentação; mantém o mesmo motor de transferências, acesso USB e instalação manual das atualizações. A compatibilidade reportada é PS4 13.50 com GoldHEN. Outros firmwares precisam de confirmação própria.
 
 ## Instalar e ligar
 
@@ -13,7 +13,7 @@ Central de transferências para PS4 com GoldHEN. Liga o telemóvel pelo QR ou pe
 
 ## Transferências
 
-O botão **Cor**, no topo da página, muda a cor dos botões, barras e detalhes. Escolhe uma das cores disponíveis ou uma cor personalizada. A escolha é guardada neste navegador e neste endereço da consola; não muda as cores da televisão. **Voltar ao verde** restaura a cor original.
+O botão **Cor**, no topo da página, muda a cor dos botões, barras e detalhes. Escolhe uma das cores disponíveis ou uma cor personalizada. Depois de ligar à consola, a escolha fica guardada na PS4 e muda também as cores da televisão. Outros dispositivos ligados à mesma consola recebem a mesma cor. Sem ligação, a escolha fica apenas neste navegador. **Voltar ao verde** restaura a cor original.
 
 - **Torrent:** envia um ficheiro .torrent de até 8 MB. Escolhe Só descarregar ou Descarregar e instalar. Mantém a app aberta e a PS4 ligada.
 - **Magnet:** cola uma ligação BitTorrent v1 com tracker HTTP/UDP ou fonte direta suportada. A app obtém e verifica os metadados antes de permitir o download. Também requer a app aberta e a consola ligada.

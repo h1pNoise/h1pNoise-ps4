@@ -19,9 +19,43 @@ function applyAccent(value,save=false){
 }
 let savedAccent=accentDefault;try{savedAccent=localStorage.getItem(accentKey)||accentDefault;}catch(_){}
 applyAccent(savedAccent);
-for(const [name,color] of Object.entries(accentPresets))$('accent-'+name).onclick=()=>applyAccent(color,true);
-$('accent-custom').oninput=()=>applyAccent($('accent-custom').value,true);
-$('accent-reset').onclick=()=>applyAccent(accentDefault,true);
+let accentWanted='',accentSaving=false,accentTimer=0,accentEpoch=0,accentError=false;
+function syncAccent(d){
+ if(!/^#[0-9a-f]{6}$/i.test(d.accent||''))return;
+ if(accentSaving||accentWanted)return;
+ applyAccent(d.accent);try{localStorage.setItem(accentKey,d.accent.toLowerCase());}catch(_){}
+ if(!accentError)text('accent-status','Cor sincronizada com a consola.');
+}
+function chooseAccent(value,defer=false){
+ applyAccent(value,true);accentError=false;
+ if(!connected||!code||!lastStatus||!lastStatus.accent)return;
+ accentWanted=$('accent-custom').value;accentEpoch++;clearTimeout(accentTimer);
+ text('accent-status','A guardar a cor na consola…');
+ if(defer){accentTimer=setTimeout(saveAccent,250);return;}
+ return saveAccent();
+}
+async function saveAccent(){
+ if(accentSaving)return;accentSaving=true;
+ try{
+  while(accentWanted&&connected&&code){
+   const value=accentWanted,requestCode=code;accentWanted='';
+   try{
+    await api('accent',value,true);
+    if(code!==requestCode){accentWanted='';return;}
+    if(lastStatus)lastStatus.accent=value;
+    if(!accentWanted)text('accent-status','Cor guardada na consola e aplicada à televisão.');
+   }catch(e){
+    accentWanted='';accentError=true;
+    if(lastStatus&&lastStatus.accent)applyAccent(lastStatus.accent,true);
+    text('accent-status',e.message+' Volta a escolher a cor para tentar novamente.');
+    if(e.status===401||e.status===429){connected=false;controls();}
+   }
+  }
+ }finally{accentSaving=false;if(!connected||!code)accentWanted='';}
+}
+for(const [name,color] of Object.entries(accentPresets))$('accent-'+name).onclick=()=>chooseAccent(color);
+$('accent-custom').oninput=()=>chooseAccent($('accent-custom').value,true);
+$('accent-reset').onclick=()=>chooseAccent(accentDefault);
 function closeAccent(){$('accent-picker').open=false;$('accent-toggle').focus();}
 $('accent-close').onclick=closeAccent;
 $('accent-picker').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();closeAccent();}};
@@ -153,8 +187,8 @@ function render(d){
  controls();
 }
 async function refresh(){
- if(!code||polling)return;polling=true;const requestCode=code;
- try{const d=await api('status');if(code===requestCode)render(d);}
+ if(!code||polling)return;polling=true;const requestCode=code,requestAccentEpoch=accentEpoch;
+ try{const d=await api('status');if(code===requestCode){render(d);if(requestAccentEpoch===accentEpoch)syncAccent(d);}}
  catch(e){connected=false;previous=null;text('connection','Sem ligação');badge('connection-badge','warn');$('pairing').classList.remove('connected');$('pair-form').hidden=false;$('qrbox').hidden=true;qrCode='';text('pair-status',e.message);controls();}
  finally{polling=false;}
 }

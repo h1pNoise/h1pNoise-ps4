@@ -4,6 +4,7 @@
 #include "pairing.h"
 #include "version.h"
 #include "magnet.h"
+#include "appearance.h"
 #ifdef HARBOR_RUNTIME_UPDATES
 #define UPDATE_MODE "runtime"
 #elif defined(HARBOR_PKG_DIRECT_TEST)
@@ -46,6 +47,7 @@ static void status_response(Sock s){
  n+=snprintf(out+n,160000-n,",\"update\":{\"mode\":\"" UPDATE_MODE "\",\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"installSent\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.install_sent?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
  n+=snprintf(out+n,160000-n,",\"updatePath\":%s",update_path);
  char cleanup_message[3200];jsonstr(cleanup_message,sizeof(cleanup_message),app.update.cleanup_message);n+=snprintf(out+n,160000-n,",\"updateCleanupMessage\":%s",cleanup_message);
+ n+=snprintf(out+n,160000-n,",\"accent\":\"#%06x\"",(unsigned)app.accent);
  unlock(&app.mu);
  n+=snprintf(out+n,160000-n,",\"updateDestinations\":[{\"id\":\"internal\",\"available\":true},{\"id\":\"usb0\",\"available\":%s},{\"id\":\"usb1\",\"available\":%s}]",update_destination_available(1)?"true":"false",update_destination_available(2)?"true":"false");
  uint64_t available=0;char free_json[32]="null",storage_path[3200];int known=!free_bytes(app.root,&available);
@@ -79,7 +81,14 @@ static void handle(Sock s){
  if(header(head,"Transfer-Encoding",encoding,sizeof(encoding))!=0){fail(s,400,"Transfer-Encoding nao suportado.");return;}
  size_t bytes=0;int lc=header(head,"Content-Length",length,sizeof(length));if(lc<0){fail(s,400,"Tamanho invalido.");return;}if(lc){if(!length[0]){fail(s,400,"Tamanho invalido.");return;}for(char *p=length;*p;p++){if(*p<'0'||*p>'9'||bytes>MAX_TORRENT/10){fail(s,413,"Ficheiro demasiado grande.");return;}bytes=bytes*10+*p-'0';}if(bytes>MAX_TORRENT){fail(s,413,"O torrent deve ter ate 8 MB.");return;}}
  char error[512]="Operacao indisponivel.";int rc=0;
- if(!strcmp(path,"/api/pkg-url")){
+ if(!strcmp(path,"/api/accent")){
+  char color[7];uint32_t value;if(bytes!=7){fail(s,400,"Cor invalida. Usa # e seis caracteres hexadecimais.");return;}
+  if(recv_all(s,color,sizeof(color)))return;
+  if(accent_parse(color,sizeof(color),&value)){fail(s,400,"Cor invalida.");return;}
+  /* This fixed preference file is independent of downloads and PKG cleanup. */
+  if(accent_save(app.root,value)){fail(s,500,"Nao foi possivel guardar a cor na consola. Tenta novamente.");return;}
+  lock(&app.mu);app.accent=value;unlock(&app.mu);
+ }else if(!strcmp(path,"/api/pkg-url")){
   if(!bytes||bytes>=PKG_URL_CAP){fail(s,400,"Cola um link direto HTTP ou HTTPS com menos de 2048 caracteres.");return;}
   char url[PKG_URL_CAP];if(recv_all(s,url,bytes))return;url[bytes]=0;rc=begin_remote_pkg(url,bytes,error,sizeof(error));
  }else if(!strcmp(path,"/api/magnet")){

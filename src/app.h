@@ -4,6 +4,7 @@
 #include "platform.h"
 #include "updater.h"
 typedef struct {
+ uint32_t accent;
  Mutex mu,io; Torrent torrent; char root[512],dir[600],message[512],phase[40],ip[16],pin[17];
  int loaded,busy,pause,auto_install,peers,port,magnet_pending; uint64_t done,install_done,install_total;
  unsigned char *complete; unsigned char peer_id[20];
