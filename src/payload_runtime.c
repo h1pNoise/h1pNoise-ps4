@@ -15,6 +15,9 @@ int *__error(void){return &payload_errno;}
 int *__errno_location(void){return &payload_errno;}
 #ifndef HARBOR_PAYLOAD_RUNTIME_TEST
 asm(".section .text.entry,\"ax\",@progbits\n.global _start\n_start:\n"
+    /* Raw BIN loaders identify the leading JMP rel32 before executing it.
+       Keep this in the linked image so RIP-relative addresses remain valid. */
+    ".byte 0xe9\n.long payload_entry-(.+4)\n.p2align 4,0x90\npayload_entry:\n"
     "lea __bss_start(%rip),%rdi\nlea __bss_end(%rip),%rcx\nsub %rdi,%rcx\nxor %eax,%eax\ncld\nrep stosb\njmp payload_main\n.text\n");
 /* Raw syscall errors are local to our wrappers, never overwrite host errno. */
 #define RAW(name,num) asm(".global " #name "\n" #name ":\nmov $" #num ",%rax\nmov %rcx,%r10\nsyscall\njnc 1f\nmov %eax,payload_errno(%rip)\nmov $-1,%rax\n1: ret\n");

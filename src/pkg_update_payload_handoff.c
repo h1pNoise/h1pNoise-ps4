@@ -13,6 +13,14 @@ static void report(const char *message){
  if(f){fprintf(f,"pkg-payload-handoff %s\n",message);fflush(f);fsync(fileno(f));fclose(f);}
 }
 int pkg_update_payload_handoff(const char *path,char *error,size_t cap){
+ /* Validate the actual embedded BIN before writing any request or sending it.
+    A new build must not reproduce an invalid-format handoff. */
+ if(update_payload_size<32||update_payload_size>1024*1024||update_payload[0]!=0xe9){
+  snprintf(error,cap,"O payload incorporado tem formato invalido. Instala a versao corrigida pelo GoldHEN.");return -1;
+ }
+ uint32_t rel=(uint32_t)update_payload[1]|(uint32_t)update_payload[2]<<8|(uint32_t)update_payload[3]<<16|(uint32_t)update_payload[4]<<24;
+ int64_t entry=5+(int64_t)(int32_t)rel;
+ if(entry<5||(uint64_t)entry>=update_payload_size){snprintf(error,cap,"A entrada do payload incorporado e invalida.");return -1;}
  unsigned char raw[UPDATE_MANIFEST_MAX],bytes[16];size_t n;
  lock(&app.mu);n=app.update.signed_size;if(n<=sizeof(raw))memcpy(raw,app.update.signed_manifest,n);unlock(&app.mu);
  UpdateManifest m;char expected[700];

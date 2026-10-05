@@ -5,6 +5,7 @@ public syscall interface used by sleirsgoevy's payloads and DPI.
 """
 from pathlib import Path
 import argparse, subprocess, struct
+from payload_format import validate_raw_payload
 root=Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser()
 for key in ('sdk','llvm','out'):p.add_argument('--'+key,type=Path,required=True)
@@ -48,9 +49,11 @@ symbols=subprocess.check_output([str(llvm/'llvm-nm.exe'),'-n',str(elf)],text=Tru
 end=next(int(line.split()[0],16) for line in symbols.splitlines() if line.endswith(' __bss_end'))
 data=binary.read_bytes();assert len(data)<=end<1024*1024
 binary.write_bytes(data+b'\0'*(end-len(data)))
+entry=validate_raw_payload(binary.read_bytes())
+assert entry==next(int(line.split()[0],16) for line in symbols.splitlines() if line.endswith(' payload_entry'))
 undefined=subprocess.check_output([str(llvm/'llvm-nm.exe'),'--undefined-only',str(elf)],text=True)
 assert not undefined.strip(),undefined
 assert next(line.split()[0] for line in symbols.splitlines() if line.endswith(' _start'))=='0000000000000000'
 header=elf.read_bytes();shoff=struct.unpack_from('<Q',header,40)[0];shsize,shnum=struct.unpack_from('<HH',header,58)
 assert not any(struct.unpack_from('<I',header,shoff+i*shsize+4)[0] in (4,9) and struct.unpack_from('<Q',header,shoff+i*shsize+32)[0] for i in range(shnum)), 'Relocations in raw payload'
-print('Payload built:',binary,'bytes',end,'(entry 0; no imports or relocations)')
+print('Payload built:',binary,'bytes',end,'(E9 header; JMP entry',entry,'; no imports or relocations)')
