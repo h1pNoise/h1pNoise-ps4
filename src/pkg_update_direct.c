@@ -80,11 +80,35 @@ static int native_install(void *unused,char *error,size_t cap){
  if(rc){snprintf(error,cap,"Instalacao direta recusada (0x%08X). O PKG original continua em /data/pkg. Envia update-install-debug.log.",(unsigned)rc);return -1;}
  return 0;
 }
+/* A direct install moves this inode into /user/app. A normal sequential copy
+   can have the right hash yet lack the disk allocation needed by PFS on launch.
+   Prepare only our new, empty descriptor; never touch the installed app file.
+   ABI and commands: https://flatz.github.io/ (PKG installation from HDD).
+   Unsupported firmware/device/commands must stop before installation. */
+static int prepare_copy(void *context,char *error,size_t cap){
+ int fd=*(int*)context,rc=ftruncate(fd,0);
+ report("truncar copia nova antes da reserva",rc);if(rc)goto failed;
+ int device=open("/dev/gsched_is.ctl",O_RDONLY);
+ if(device<0){rc=-errno;report("abrir dispositivo de reserva",rc);goto failed;}
+ struct {void *file;uint32_t slot,priority;unsigned char reserved[16];} schedule={0};
+ _Static_assert(sizeof(schedule)==32,"gsched ioctl buffer size");
+ schedule.file=(void*)(uintptr_t)fd;schedule.slot=1;schedule.priority=7;
+ rc=ioctl(device,0xC0209406UL,&schedule);if(rc==-1)rc=-errno;
+ report("definir slot e prioridade da copia",rc);close(device);if(rc)goto failed;
+ struct {uint64_t size,zero,flags,alignment;} allocation={candidate.size,0,0x80,0};
+ _Static_assert(sizeof(allocation)==32,"FFS allocation ioctl ABI");
+ rc=ioctl(fd,0xC02066A1UL,&allocation);if(rc==-1)rc=-errno;
+ report("reservar blocos da copia antes de escrever",rc);if(rc)goto failed;
+ return 0;
+failed:
+ snprintf(error,cap,"Nao foi possivel preparar o PKG no disco (0x%08X). Nada foi instalado. O original ficou em /data/pkg; envia update-install-debug.log.",(unsigned)rc);return -1;
+}
 /* AppInstallPkg may move its source. Install a verified private copy so that
    a refusal/crash cannot consume the user's original downloaded update. */
 static int copy_pkg(const char *from,const char *to,char *error,size_t cap){
  FILE *in=fopen(from,"rb");if(!in)goto failed;
  int fd=open(to,O_WRONLY|O_CREAT|O_EXCL,0600);if(fd<0){fclose(in);goto failed;}
+ if(installer_with_permissions(prepare_copy,&fd,error,cap)){fclose(in);close(fd);remove(to);return -1;}
  unsigned char *buffer=malloc(65536);int bad=!buffer;uint64_t total=0;
  while(!bad){size_t n=fread(buffer,1,65536,in);if(!n){bad=ferror(in);break;}if(total+n>candidate.size){bad=1;break;}
   size_t at=0;while(at<n){ssize_t k=write(fd,buffer+at,n-at);if(k<=0){bad=1;break;}at+=(size_t)k;}total+=n;

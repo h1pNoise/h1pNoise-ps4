@@ -18,7 +18,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  }
  assert.match(packageSfo||'',/^\d{2}\.\d{2}$/);assert.ok(packageSfo>installed.installedSfo,'Supply a package newer than the selected installed version');
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed=process.argv[5];
- assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-direct-test\/current\.h1p$/);
+ assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-direct-allocated-test\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let installedPkg=Buffer.from(pkg);installedPkg.fill(0x44,installedPkg.length-1);
@@ -94,14 +94,20 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceBgftServiceIntDebugDownloadRegisterPkg:()=>{throw Error('Unexpected remote patch registration');},
   sceKernelSendNotificationRequest:()=>{notifications++;return 0;}
  };
- let nativeCalls=0,sleeps=0,fileModes,initializedAuthorized=false;
+ let nativeCalls=0,sleeps=0,fileModes,allocated,scheduleConfigured,initializedAuthorized=false;
  const attempt='/data/harbor/pkg-direct-attempt.h1p',copyPath=packagePath+'.install.pkg',installedPath='/user/app/HBRW00001/app.pkg';
  env.mkdir=p=>{assert.equal(str(p),'/data/harbor');return 0;};
  env.access=p=>files.has(str(p))?0:-1;
- env.open=(p,flags,mode)=>{p=str(p);if(p==='/user'+copyPath){if(cfg.aliasDenied){put32(error,13);return -1;}assert.ok(files.has(copyPath));const id=++handleId;handles.set(BigInt(id),{path:copyPath,at:0});return id;}if(p.startsWith('/system/')){const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;}if(files.has(p))return -1;if(cfg.copyOpenFail&&p===copyPath)return -1;files.set(p,Buffer.alloc(0));fileModes.set(p,v().getUint32(Number(mode),true)&~0o077);const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;};
+ env.open=(p,flags,mode)=>{p=str(p);if(p==='/user'+copyPath){if(cfg.aliasDenied){put32(error,13);return -1;}assert.ok(files.has(copyPath));const id=++handleId;handles.set(BigInt(id),{path:copyPath,at:0});return id;}if(p==='/dev/gsched_is.ctl'){assert.ok(privileged);if(cfg.deviceDenied){put32(error,2);return -1;}const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;}if(p.startsWith('/system/')){const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;}if(files.has(p))return -1;if(cfg.copyOpenFail&&p===copyPath)return -1;files.set(p,Buffer.alloc(0));fileModes.set(p,v().getUint32(Number(mode),true)&~0o077);const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;};
  env.close=id=>{assert.ok(handles.delete(BigInt(id)));return 0;};
- env.write=(id,p,n)=>{const h=handles.get(BigInt(id));if(cfg.copyWriteFail&&h.path===copyPath)return -1n;const count=cfg.shortWrites?Math.min(32768,Number(n)):Number(n);files.set(h.path,Buffer.concat([files.get(h.path),Buffer.from(m().subarray(Number(p),Number(p)+count))]));return BigInt(count);};
+ env.write=(id,p,n)=>{const h=handles.get(BigInt(id));if(h.path===copyPath)assert.ok(allocated.has(copyPath),'Only write after disk reservation');if(cfg.copyWriteFail&&h.path===copyPath)return -1n;const count=cfg.shortWrites?Math.min(32768,Number(n)):Number(n);files.set(h.path,Buffer.concat([files.get(h.path),Buffer.from(m().subarray(Number(p),Number(p)+count))]));return BigInt(count);};
  env.fileno=id=>Number(id);
+ env.ftruncate=(id,size)=>{assert.ok(privileged);assert.equal(handles.get(BigInt(id)).path,copyPath);assert.equal(size,0n);assert.equal(files.get(copyPath).length,0);return cfg.truncateFail?-1:0;};
+ env.ioctl=(id,cmd,args)=>{
+  assert.ok(privileged,'allocation authorization');const a=Number(ptr(args)),h=handles.get(BigInt(id));
+  if(cmd===0xC0209406n){assert.equal(h.path,'/dev/gsched_is.ctl');const target=v().getBigUint64(a,true);assert.equal(handles.get(target).path,copyPath);assert.equal(files.get(copyPath).length,0);assert.equal(v().getUint32(a+8,true),1);assert.equal(v().getUint32(a+12,true),7);assert.deepEqual(Buffer.from(m().subarray(a+16,a+32)),Buffer.alloc(16));if(cfg.scheduleFail)return -25;scheduleConfigured=true;return 0;}
+  assert.equal(cmd,0xC02066A1n);assert.equal(h.path,copyPath);assert.ok(scheduleConfigured);assert.equal(files.get(copyPath).length,0,'allocate before writing');assert.equal(v().getBigUint64(a,true),BigInt(pkg.length));assert.equal(v().getBigUint64(a+8,true),0n);assert.equal(v().getBigUint64(a+16,true),0x80n);assert.equal(v().getBigUint64(a+24,true),0n);if(cfg.allocateFail)return -28;allocated.add(copyPath);return 0;
+ };
  env.fsync=id=>cfg.copySyncFail&&handles.get(BigInt(id))?.path===copyPath||cfg.markerSyncFail&&handles.get(BigInt(id))?.path===attempt?-1:0;
  env.fseeko=(id,offset,mode)=>{const h=handles.get(id);h.at=(mode===2?files.get(h.path).length:mode===1?h.at:0)+Number(offset);return 0;};
  env.ftello=id=>BigInt(handles.get(id).at);
@@ -119,7 +125,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   // Reproduce the EACCES seen on the PS4 when a different service UID cannot
   // read the installer copy. A restrictive creation umask must be corrected.
   if(!(fileModes.get(copyPath)&0o004))return 0x8002000D|0;
-  assert.equal(fileModes.get(copyPath),0o644);
+  assert.equal(fileModes.get(copyPath),0o644);assert.ok(allocated.has(copyPath),'Direct install needs allocated inode');
   if(cfg.installFail)return 0x8002000D|0;
   if(!cfg.unconfirmed){files.set(installedPath,Buffer.from(pkg));if(cfg.badInstalled)files.get(installedPath).fill(0x99,10000,10001);}
   if(cfg.consumeSource)files.delete(copyPath);return 0;
@@ -136,14 +142,14 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;initializedAuthorized=false;fileModes=new Map();userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')],[installedPath,Buffer.from(installedPkg)]]);handles=new Map();handleId=0;requests=[];clock=1000n;nativeCalls=sleeps=0;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;initializedAuthorized=false;fileModes=new Map();allocated=new Set();scheduleConfigured=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')],[installedPath,Buffer.from(installedPkg)]]);handles=new Map();handleId=0;requests=[];clock=1000n;nativeCalls=sleeps=0;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
  function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  // Invalid data, unavailable installed identity, refusal and uncertain outcome.
  available({initFail:true});op(1,0,'error');assert.equal(nativeCalls,0);
- for(const options of [{copyOpenFail:true},{copyWriteFail:true},{copySyncFail:true},{chmodFail:true},{markerSyncFail:true},{authActivateFailure:true},{authRestoreFailure:true},{installFail:true},{unconfirmed:true},{badInstalled:true},{shortWrites:true,consumeSource:true}]){
+ for(const options of [{copyOpenFail:true},{deviceDenied:true},{truncateFail:true},{scheduleFail:true},{allocateFail:true},{copyWriteFail:true},{copySyncFail:true},{chmodFail:true},{markerSyncFail:true},{authActivateFailure:true},{authRestoreFailure:true},{installFail:true},{unconfirmed:true},{badInstalled:true},{shortWrites:true,consumeSource:true}]){
   available(options);op(1,0,options.shortWrites?'installed':'error');assert.deepEqual(files.get(packagePath),pkg);assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);
-  if(options.copyOpenFail||options.copyWriteFail||options.copySyncFail||options.chmodFail||options.markerSyncFail||options.authActivateFailure)assert.equal(nativeCalls,0);
+  if(options.copyOpenFail||options.deviceDenied||options.truncateFail||options.scheduleFail||options.allocateFail||options.copyWriteFail||options.copySyncFail||options.chmodFail||options.markerSyncFail||options.authActivateFailure)assert.equal(nativeCalls,0);
   if(options.unconfirmed||options.badInstalled){assert.equal(nativeCalls,1);assert.equal(sleeps,60);}
   if(files.has(attempt)){const calls=nativeCalls;const rc=e.updater_begin(1,error,512n);assert.equal(rc,-1);assert.equal(nativeCalls,calls);}
  }
@@ -157,5 +163,5 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  available({aliasDenied:true});op(1,0,'installed');assert.equal(nativeCalls,1);
  available({consumeSource:true});op(1,0,'installed');assert.equal(nativeCalls,1);assert.equal(e.fixture_state(1),0);assert.equal(e.fixture_state(2),0);assert.deepEqual(files.get(packagePath),pkg);assert.deepEqual(files.get(installedPath),pkg);assert.equal(files.has(copyPath),false);assert.match(str(e.fixture_message()),/continua aberta/);op(0,-1);
  assert.equal(WebAssembly.Module.imports(module).some(x=>/AppPrepareOverwrite|AppUnInstall|KillApp|LaunchApp|LoadExec|_exit/.test(x.name)),false);
- console.log(`${checks} direct self-install checks passed (${installed.installedVersion} -> ${installed.candidateVersion}): signature/hash/identity, private copy, native call once, installed PKG confirmation, no BGFT/overwrite preparation/uninstall/helper/exit/restart, uncertainty blocks retry.`);
+ console.log(`${checks} direct self-install checks passed (${installed.installedVersion} -> ${installed.candidateVersion}): signature/hash/identity, required disk preallocation before writing, private copy, native call once, installed PKG confirmation, no BGFT/overwrite preparation/uninstall/helper/exit/restart, uncertainty blocks retry.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

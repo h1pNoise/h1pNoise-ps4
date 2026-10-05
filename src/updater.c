@@ -73,7 +73,7 @@ static void *worker(void *arg){
 #elif defined(HARBOR_PKG_DIRECT_TEST)
    status("installing","PKG verificado. A instalar sem fechar a h1pNoise...");
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
-   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","Nova versao instalada. A app continua aberta; a versao em execucao muda quando voltares a abri-la.");update_notify("h1pNoise: atualizacao instalada. Disponivel na proxima abertura.");}
+   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","PKG instalado e confirmado no disco. A app continua aberta; confirma a abertura da nova versao depois.");update_notify("h1pNoise: PKG instalado. Confirma a abertura da nova versao.");}
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
    status("installing","PKG verificado. A entregar a instalacao ao h1pNoise Updater...");
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
@@ -84,7 +84,7 @@ static void *worker(void *arg){
    if(update_file_verify(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));lock(&app.mu);app.update.task=task;unlock(&app.mu);
 #ifdef HARBOR_PKG_DIRECT_TEST
-   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","Nova versao instalada. A app continua aberta; a versao em execucao muda quando voltares a abri-la.");}
+   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","PKG instalado e confirmado no disco. A app continua aberta; confirma a abertura da nova versao depois.");}
 #else
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
 #endif
