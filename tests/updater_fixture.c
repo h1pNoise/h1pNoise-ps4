@@ -9,4 +9,5 @@ const char *fixture_phase(void){return app.update.phase;}
 const char *fixture_message(void){return app.update.message;}
 uint64_t fixture_done(void){return app.update.done;}
 const char *fixture_update_path(void){return app.update.path;}
+const char *fixture_cleanup_message(void){return app.update.cleanup_message;}
 void fixture_directory(void *p,int directory){struct stat *s=p;memset(s,0,sizeof(*s));s->st_mode=directory?S_IFDIR:S_IFREG;}

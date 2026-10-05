@@ -127,6 +127,22 @@ class Integration(unittest.TestCase):
         info=dict(self.info);info[b'files']=[{b'length':len(self.seed.data),b'path':[b'..',b'base.pkg']}]
         self.assertEqual(self.api('/api/torrent',enc({b'announce':b'http://127.0.0.1/a',b'info':info}),'POST')[0],400)
 
+    def test_update_cleanup_http(self):
+        path='/api/update/cleanup'
+        self.assertEqual(self.api(path,b'internal','POST',auth=False)[0],401)
+        self.assertEqual(self.api(path,b'internal','POST',extra={'Origin':'https://evil.example'})[0],403)
+        self.assertEqual(self.api(path)[0],405)
+        for body in [b'',b'../usb0/long',b'usb0\0']:
+            status,data=self.api(path,body,'POST')
+            self.assertEqual(status,400)
+            self.assertIn('Destino',data['error'])
+        status,data=self.api(path,b'internal','POST')
+        self.assertEqual(status,400)
+        self.assertIn('PS4 real',data['error'])
+        status,data=self.api('/api/status')
+        self.assertEqual(status,200)
+        self.assertEqual(data['updateCleanupMessage'],'')
+
     def test_storage_status(self):
         status,data=self.api('/api/status')
         self.assertEqual(status,200)

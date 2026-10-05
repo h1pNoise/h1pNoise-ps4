@@ -126,6 +126,8 @@ HTTPS ativos, a validação da assinatura, SHA-512, identidade e versão do PKG.
 
 ## USB a partir de 0.1.50
 
+A partir de 0.1.56, **Apagar updates antigas** pede o destino e confirmação. Apaga só os nomes fixos `h1pNoise-update-<build>.pkg` e `.pkg.part` de builds anteriores a APP_BUILD, diretamente no destino escolhido. Preserva a instalada e as versões mais recentes, outros PKG, logs e subpastas. Não faz limpeza recursiva nem desinstala aplicações. Requer autenticação da consola e não pode decorrer em simultâneo com transferências ou atualizações. O resultado da limpeza é separado do estado da atualização pronta para instalar.
+
 A selecao USB permanece disponivel mesmo quando a pasta nao e visivel na raiz isolada da app. O acesso e verificado antes do download. A pasta real e aberta com acesso temporario quando necessario; as credenciais sao restauradas antes de iniciar a rede. As operacoes no PKG ficam ancoradas ao diretorio aberto, com nomes fixos e sem criar pastas USB. O registo de falha de acesso e `/data/pkg/usb-debug.log`. A instalacao continua manual pelo GoldHEN.
 
 A partir de 0.1.54, as operações relativas ao diretório são substituídas pelo caminho absoluto fixo na raiz USB. O registo real da PS4 13.50 mostrou erros 22/14 nas operações relativas, mesmo depois de a pasta abrir. Cada abertura/remoção/renomeação usa permissões temporárias e restaura-as antes de iniciar a rede ou usar o ficheiro. A 0.1.55 inclui o PKG 0.1.54 para testar imediatamente este download na pen.

@@ -45,6 +45,7 @@ static void status_response(Sock s){
  char update_message[3200],notes[4800],update_version[200],update_path[3200];jsonstr(update_message,sizeof(update_message),app.update.message);jsonstr(notes,sizeof(notes),app.update.manifest.notes);jsonstr(update_version,sizeof(update_version),app.update.manifest.version);jsonstr(update_path,sizeof(update_path),app.update.path);
  n+=snprintf(out+n,160000-n,",\"update\":{\"mode\":\"" UPDATE_MODE "\",\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"installSent\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.install_sent?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
  n+=snprintf(out+n,160000-n,",\"updatePath\":%s",update_path);
+ char cleanup_message[3200];jsonstr(cleanup_message,sizeof(cleanup_message),app.update.cleanup_message);n+=snprintf(out+n,160000-n,",\"updateCleanupMessage\":%s",cleanup_message);
  unlock(&app.mu);
  n+=snprintf(out+n,160000-n,",\"updateDestinations\":[{\"id\":\"internal\",\"available\":true},{\"id\":\"usb0\",\"available\":%s},{\"id\":\"usb1\",\"available\":%s}]",update_destination_available(1)?"true":"false",update_destination_available(2)?"true":"false");
  uint64_t available=0;char free_json[32]="null",storage_path[3200];int known=!free_bytes(app.root,&available);
@@ -85,11 +86,12 @@ static void handle(Sock s){
   if(!bytes||bytes>=MAGNET_CAP){fail(s,400,"Cola um magnet com menos de 32768 bytes.");return;}char *url=malloc(bytes+1);if(!url){fail(s,500,"Sem memoria.");return;}if(recv_all(s,url,bytes)){free(url);return;}url[bytes]=0;rc=begin_magnet(url,bytes,error,sizeof(error));free(url);
  }else if(!strcmp(path,"/api/torrent")){
   if(!bytes){fail(s,400,"Escolhe um ficheiro .torrent.");return;}unsigned char *buf=malloc(bytes);if(!buf){fail(s,500,"Sem memoria.");return;}if(recv_all(s,buf,bytes)){free(buf);return;}rc=import_torrent(buf,bytes,error,sizeof(error));free(buf);
- }else if(!strcmp(path,"/api/update/download")){
+ }else if(!strcmp(path,"/api/update/download")||!strcmp(path,"/api/update/cleanup")){
+  int cleanup=!strcmp(path,"/api/update/cleanup");
   /* Empty requests from older clients retain the internal destination. */
-  if(bytes>8){fail(s,400,"Destino de atualizacao invalido.");return;}
+  if(bytes>8||(cleanup&&!bytes)){fail(s,400,"Destino de atualizacao invalido.");return;}
   char destination[9]="internal";if(bytes){if(recv_all(s,destination,bytes))return;destination[bytes]=0;if(memchr(destination,0,bytes)){fail(s,400,"Destino de atualizacao invalido.");return;}}
-  rc=updater_download_to(destination,error,sizeof(error));
+  rc=cleanup?updater_cleanup_to(destination,error,sizeof(error)):updater_download_to(destination,error,sizeof(error));
  }else{
   if(bytes){fail(s,400,"Este pedido nao aceita conteudo.");return;}
   if(!strcmp(path,"/api/update/check"))rc=updater_begin(0,error,sizeof(error));

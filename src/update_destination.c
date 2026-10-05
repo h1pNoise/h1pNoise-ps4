@@ -1,4 +1,5 @@
 #include "app.h"
+#include <errno.h>
 #include "version.h"
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
 #include "installer_access.h"
@@ -127,7 +128,12 @@ int update_destination_remove(int directory,const char *path){
 #else
  (void)directory;
 #endif
+#ifdef _WIN32
  return remove(path);
+#else
+ /* unlink never removes a directory, even if it has an update-like name. */
+ return unlink(path);
+#endif
 }
 int update_destination_rename(int directory,const char *from,const char *to){
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
@@ -136,4 +142,20 @@ int update_destination_rename(int directory,const char *from,const char *to){
  (void)directory;
 #endif
  return rename(from,to);
+}
+int update_destination_cleanup(int id,unsigned *removed,char *error,size_t cap){
+ int directory=-1,rc=0;*removed=0;
+ if(update_destination_prepare(id,&directory,error,cap))return -1;
+ /* Never enumerate or recursively remove content. Only older updater-owned
+    build filenames are eligible; installed and newer builds remain intact. */
+ for(unsigned build=1;build<APP_BUILD&&!rc;build++)for(int part=0;part<2;part++){
+  char path[720];snprintf(path,sizeof(path),"%s/h1pNoise-update-%u.pkg%s",update_destination_root(id),build,part?".part":"");
+  errno=0;if(!update_destination_remove(directory,path)){(*removed)++;continue;}
+  if(errno==ENOENT)continue;
+  snprintf(error,cap,"Falha ao apagar ficheiros antigos em %s (erro %d). Confirma o acesso de escrita.",update_destination_root(id),errno?errno:EIO);rc=-1;break;
+ }
+#ifndef _WIN32
+ if(directory>=0)close(directory);
+#endif
+ return rc;
 }

@@ -29,7 +29,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const put32=(p,x)=>v().setInt32(Number(p),x,true),put64=(p,x)=>v().setBigUint64(Number(p),BigInt(x),true);
  const ptr=p=>v().getBigUint64(Number(p),true);
  function alloc(n){n=Number(n);const p=heap;heap=(heap+n+15)&~15;if(heap>m().length)instance.exports.memory.grow(BigInt(Math.ceil((heap-m().length)/65536)));return BigInt(p);}
- function fmt(s,args){let at=Number(args);return s.replace(/%([0-9]*)([sduXx])/g,(_,width,t)=>{let x;t==='s'?(x=str(ptr(at))):(x=t==='d'?v().getInt32(at,true):v().getUint32(at,true));at+=8;return (t==='X'||t==='x'?x.toString(16)[t==='X'?'toUpperCase':'toLowerCase']():String(x)).padStart(Number(width)||0,'0');});}
+ function fmt(s,args){let at=Number(args);return s.replace(/%([0-9]*)(?:\.([0-9]+))?([sduXx])/g,(_,width,precision,t)=>{let x;t==='s'?(x=str(ptr(at))):(x=t==='d'?v().getInt32(at,true):v().getUint32(at,true));at+=8;if(t==='s'&&precision)x=x.slice(0,Number(precision));return (t==='X'||t==='x'?x.toString(16)[t==='X'?'toUpperCase':'toLowerCase']():String(x)).padStart(Number(width)||0,'0');});}
  const env={
   pthread_mutex_lock:()=>0,pthread_mutex_trylock:()=>0,pthread_mutex_unlock:()=>0,
   memcpy:(d,s,n)=>{m().copyWithin(Number(d),Number(s),Number(s)+Number(n));return d;},
@@ -66,8 +66,8 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   fwrite:(data,size,count,id)=>{if(cfg.writeFail||(cfg.unplugAfterBytes&&files.get(handles.get(id).path).length>=cfg.unplugAfterBytes))return 0n;const h=handles.get(id),n=Number(size*count),b=Buffer.from(m().subarray(Number(data),Number(data)+n));files.set(h.path,Buffer.concat([files.get(h.path),b]));h.at+=n;return count;},
   fread:(data,size,count,id)=>{const h=handles.get(id),b=files.get(h.path),n=Math.min(Number(size*count),b.length-h.at);m().set(b.subarray(h.at,h.at+n),Number(data));h.at+=n;return BigInt(n)/size;},
   fflush:()=>cfg.flushFail?-1:0,ferror:()=>0,rewind:id=>{handles.get(id).at=0;},fclose:id=>{assert.ok(handles.delete(id));return 0;},
-  remove:path=>{path=str(path);assert.match(path,/^(?:\/data\/pkg|\/mnt\/usb[01])\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
-  unlink:path=>{path=str(path);assert.equal(usbElevated,true);assert.match(path,/^\/mnt\/usb[01]\/h1pNoise-update-\d+\.pkg\.part$/);files.delete(path);return 0;},
+  remove:path=>{path=str(path);assert.match(path,/^\/data\/pkg\/h1pNoise-update-\d+\.pkg(?:\.part)?$/);if(cfg.cleanupFailAt===path){put32(BigInt(base+1024),13);return -1;}if(!files.delete(path)){put32(BigInt(base+1024),2);return -1;}return 0;},
+  unlink:path=>{const p=path;path=str(path);if(path.startsWith('/data/pkg/'))return env.remove(p);assert.equal(usbElevated,true);assert.equal(usbAuthorized,true);assert.match(path,/^\/mnt\/usb[01]\/h1pNoise-update-\d+\.pkg(?:\.part)?$/);if(cfg.cleanupFailAt===path){put32(BigInt(base+1024),13);return -1;}if(!files.delete(path)){put32(BigInt(base+1024),2);return -1;}return 0;},
   rename:(a,b)=>{a=str(a);b=str(b);if(a.startsWith('/mnt/usb')){assert.equal(usbElevated,true);assert.equal(usbAuthorized,true);assert.equal(a.slice(0,10),b.slice(0,10));assert.match(b,/^\/mnt\/usb[01]\/h1pNoise-update-\d+\.pkg$/);}if(cfg.renameFail){put32(BigInt(base+1024),5);return -1;}assert.ok(files.has(a));files.set(b,files.get(a));files.delete(a);return 0;},
   sceSysmoduleLoadModuleInternal:()=>0,sceHttpSetAutoRedirect:(_id,enable)=>{assert.equal(enable,0);return 0;},
   sceHttpSetResponseHeaderMaxSize:(id,size)=>{assert.equal(id,4);assert.equal(size,32768n);headerLimits.set(id,Number(size));return 0;},
@@ -165,6 +165,33 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  }
  available();for(const id of ['../usb0','/mnt/usb0','usb2','USB0','internal/../',''])saveTo(id,-1);
  e.fixture_busy(1);saveTo('internal',-1);e.fixture_busy(0);
+ // Cleanup cannot touch arbitrary PKGs, directories, installed or newer builds.
+ function cleanup(id,ret=0){
+  const before=requests.length,p=alloc(id.length+1);write(p,id);write(error,'');
+  assert.equal(e.updater_cleanup_to(p,error,512n),ret,str(error));
+  assert.equal(requests.length,before,'cleanup must not use the network');
+  assert.equal(e.fixture_state(0),0);assert.equal(handles.size,0);assert.equal(directories.size,0);assert.equal(descriptors.size,0);assert.equal(usbElevated,false);assert.equal(usbAuthorized,false);checks++;
+ }
+ for(const [id,root] of [['internal','/data/pkg'],['usb0','/mnt/usb0'],['usb1','/mnt/usb1']]){
+  ready({usb:[root],usbSandbox:true});
+  const kept=[root+'/game.pkg',root+'/custom-update.pkg',root+'/h1pNoise-update-abc.pkg',root+'/h1pNoise-update-1.pkg.bak',root+'/h1pNoise-update-'+installed.installedBuild+'.pkg',root+'/h1pNoise-update-'+installed.installedBuild+'.pkg.part',root+'/h1pNoise-update-'+nextBuild+'.pkg',root+'/folder/h1pNoise-update-1.pkg','/other/h1pNoise-update-1.pkg'];
+  for(const name of kept)if(!files.has(name))files.set(name,Buffer.from('keep'));
+  const before=new Map([...files].map(([k,v])=>[k,Buffer.from(v)]));
+  files.set(root+'/h1pNoise-update-1.pkg',Buffer.from('old'));files.set(root+'/h1pNoise-update-2.pkg.part',Buffer.from('partial'));
+  const phase=str(e.fixture_phase()),message=str(e.fixture_message()),path=str(e.fixture_update_path()),done=e.fixture_done();
+  cleanup(id);assert.match(str(e.fixture_cleanup_message()),/Apagados 2 ficheiros/);
+  assert.equal(files.has(root+'/h1pNoise-update-1.pkg'),false);assert.equal(files.has(root+'/h1pNoise-update-2.pkg.part'),false);
+  for(const [name,data] of before)assert.deepEqual(files.get(name),data,name);
+  assert.equal(e.fixture_state(1),1);assert.equal(e.fixture_state(2),1);assert.equal(str(e.fixture_phase()),phase);assert.equal(str(e.fixture_message()),message);assert.equal(str(e.fixture_update_path()),path);assert.equal(e.fixture_done(),done);
+  cleanup(id);assert.match(str(e.fixture_cleanup_message()),/Nao foram encontrados/);
+  cfg.cleanupFailAt=root+'/h1pNoise-update-2.pkg';files.set(root+'/h1pNoise-update-1.pkg',Buffer.from('old'));files.set(cfg.cleanupFailAt,Buffer.from('blocked'));files.set(root+'/h1pNoise-update-3.pkg',Buffer.from('later'));
+  cleanup(id);assert.match(str(e.fixture_cleanup_message()),/Apagados 1 ficheiros.*erro 13/);assert.equal(files.has(cfg.cleanupFailAt),true);assert.equal(files.has(root+'/h1pNoise-update-3.pkg'),true);assert.equal(e.fixture_state(2),1);
+ }
+ reset();cleanup('internal');assert.match(str(e.fixture_cleanup_message()),/Nao foram encontrados/);assert.equal(e.fixture_state(1),0);
+ for(const id of ['../usb0','/mnt/usb0','usb2','USB0','internal/../',''])cleanup(id,-1);
+ e.fixture_busy(1);cleanup('internal',-1);e.fixture_busy(0);
+ reset({threadFail:true});files.set('/data/pkg/h1pNoise-update-1.pkg',Buffer.from('old'));cleanup('internal',-1);assert.equal(files.has('/data/pkg/h1pNoise-update-1.pkg'),true);
+ reset({usb:[]});cleanup('usb0');assert.match(str(e.fixture_cleanup_message()),/pen USB/);
  available({usb:['/mnt/usb0'],usbSandbox:true,usbRestoreFail:true,destination:'/mnt/usb0'});saveTo('usb0',0,'error');assert.equal(requests.length,1);assert.match(str(e.fixture_message()),/restaurar/);assert.equal(e.fixture_state(2),0);
  // New instance resets the fail-closed credential state for a file-open failure.
  instance=await WebAssembly.instantiate(module,{env:api});e=instance.exports;

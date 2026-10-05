@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let code='',connected=false,polling=false,pending='',selectedFile=null,lastStatus=null,previous=null,toastTimer=0,filesKey='',qrCode='',editingCode=false;
-let choosingUpdateDestination=false;
+let choosingUpdateDestination=false,choosingUpdateCleanup=false;
 let qrOpen=!matchMedia('(max-width: 680px)').matches;
 const phases={idle:'Sem atividade',ready:'Pronto',metadata:'A obter dados do magnet',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
 const size=n=>n>=1e9?(n/1e9).toFixed(2)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(1)+' kB':Math.max(0,n)+' B';
@@ -36,6 +36,7 @@ function controls(){
  $('install').disabled=blocked||!d.loaded||d.done!==d.total||d.phase==='installed';
  $('confirm-reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
  $('update-check').disabled=blocked||!u.supported||!!u.installSent;
+ $('update-cleanup').disabled=$('update-cleanup-confirm').disabled=$('update-cleanup-target').disabled=blocked||!u.supported||u.mode!=='manual'||!!u.installSent;
  $('update-download').disabled=blocked||!u.supported||!u.available||(u.ready&&u.mode!=='manual')||!!u.installSent;
  for(const id of ['update-internal','update-usb0','update-usb1'])$(id).disabled=blocked||!u.supported||!u.available;
  $('update-install').disabled=$('update-confirm-install').disabled=blocked||!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||!!u.installSent;
@@ -112,6 +113,9 @@ function render(d){
  $('update-download').hidden=!u.available||(u.ready&&u.mode!=='manual')||u.busy||u.task>=0;
  if(u.busy||!u.available||!connected)choosingUpdateDestination=false;
  $('update-destination').hidden=!choosingUpdateDestination;
+ if(u.busy||!connected||u.mode!=='manual')choosingUpdateCleanup=false;
+ $('update-cleanup-box').hidden=!choosingUpdateCleanup;
+ text('update-cleanup-message',d.updateCleanupMessage||'');
  $('update-saved-path').hidden=!u.ready||!d.updatePath;text('update-saved-path','PKG guardado em: '+(d.updatePath||''));
  text('update-usb-help',(d.updateDestinations||[]).some(x=>x.id!=='internal'&&x.available)?'O PKG fica na raiz da pen. Mantém a pen ligada até terminar.':'Escolhe a pen ligada à PS4. A app verifica o acesso antes de descarregar; se falhar, mostra o motivo.');
  $('update-install').hidden=!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||u.busy; $('update-confirm').hidden=true;
@@ -178,7 +182,7 @@ $('confirm-reset').onclick=async()=>{
 $('update-check').onclick=async()=>{if(!$('update-check').disabled)await action('update/check',null,'update-error');};
 $('update-download').onclick=async()=>{
  if($('update-download').disabled)return;
- if(lastStatus?.update?.mode==='manual'){choosingUpdateDestination=true;$('update-destination').hidden=false;$('update-internal').focus();controls();}
+ if(lastStatus?.update?.mode==='manual'){choosingUpdateCleanup=false;$('update-cleanup-box').hidden=true;choosingUpdateDestination=true;$('update-destination').hidden=false;$('update-internal').focus();controls();}
  else await action('update/download',null,'update-error');
 };
 for(const [id,target] of [['update-internal','internal'],['update-usb0','usb0'],['update-usb1','usb1']])$(id).onclick=async()=>{
@@ -187,6 +191,17 @@ for(const [id,target] of [['update-internal','internal'],['update-usb0','usb0'],
  await action('update/download',target,'update-error');
 };
 $('update-destination-cancel').onclick=()=>{choosingUpdateDestination=false;$('update-destination').hidden=true;$('update-download').focus();};
+$('update-cleanup').onclick=()=>{
+ if($('update-cleanup').disabled)return;
+ choosingUpdateDestination=false;$('update-destination').hidden=true;choosingUpdateCleanup=true;$('update-cleanup-box').hidden=false;$('update-cleanup-target').value='internal';$('update-cleanup-target').focus();controls();
+};
+$('update-cleanup-cancel').onclick=()=>{choosingUpdateCleanup=false;$('update-cleanup-box').hidden=true;$('update-cleanup').focus();};
+$('update-cleanup-confirm').onclick=async()=>{
+ if($('update-cleanup-confirm').disabled)return;
+ const target=$('update-cleanup-target').value;if(!['internal','usb0','usb1'].includes(target))return;
+ choosingUpdateCleanup=false;$('update-cleanup-box').hidden=true;
+ await action('update/cleanup',target,'update-error');
+};
 $('update-install').onclick=async()=>{if(!$('update-install').disabled)await action('update/install',null,'update-error');};
 $('update-cancel').onclick=()=>{$('update-confirm').hidden=true;};
 $('update-confirm-install').onclick=()=>{};

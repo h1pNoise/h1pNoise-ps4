@@ -29,6 +29,15 @@ int updater_supported(void){
 }
 static void *worker(void *arg){
  int op=(int)(intptr_t)arg,rc=-1,directory=-1;char error[512]={0};UpdateManifest m;
+ if(op==3){
+  lock(&app.mu);int destination=app.update.cleanup_destination;unlock(&app.mu);
+  unsigned removed=0;rc=update_destination_cleanup(destination,&removed,error,sizeof(error));
+  lock(&app.mu);
+  if(rc)snprintf(app.update.cleanup_message,sizeof(app.update.cleanup_message),"Apagados %u ficheiros antigos. %.450s",removed,error);
+  else if(removed)snprintf(app.update.cleanup_message,sizeof(app.update.cleanup_message),"Apagados %u ficheiros de atualizacoes anteriores em %s.",removed,update_destination_root(destination));
+  else snprintf(app.update.cleanup_message,sizeof(app.update.cleanup_message),"Nao foram encontrados ficheiros de atualizacoes anteriores em %s.",update_destination_root(destination));
+  app.update.busy=0;unlock(&app.mu);return NULL;
+ }
  if(op==0){
   ManifestBuffer b={0};if(update_http_get(UPDATE_FEED_URL,sizeof(b.data),manifest_sink,&b,error,sizeof(error))||update_manifest_read(b.data,b.used,UPDATE_PUBLIC_KEY,&m,error,sizeof(error)))goto done;
   if(m.build<=APP_BUILD){lock(&app.mu);app.update.available=app.update.ready=0;memset(&app.update.manifest,0,sizeof(app.update.manifest));unlock(&app.mu);status(m.build<APP_BUILD?"channel-old":"current",m.build<APP_BUILD?"O canal anuncia uma versao anterior a instalada. Consulta as releases no GitHub.":"Tens a versao mais recente deste canal de atualizacoes.");rc=0;goto done;}
@@ -104,18 +113,19 @@ done:
  lock(&app.mu);app.update.busy=0;unlock(&app.mu);return NULL;
 }
 static int begin(int op,int destination,char *error,size_t cap){
- if(op<0||op>2||!updater_supported()){snprintf(error,cap,"As atualizacoes da aplicacao requerem uma PS4 real.");return -1;}
- if(op==1&&(destination<0||destination>2)){snprintf(error,cap,"Destino de atualizacao invalido.");return -1;}
+ if(op<0||op>3||!updater_supported()){snprintf(error,cap,"As atualizacoes da aplicacao requerem uma PS4 real.");return -1;}
+ if((op==1||op==3)&&(destination<0||destination>2)){snprintf(error,cap,"Destino de atualizacao invalido.");return -1;}
 #if defined(HARBOR_RUNTIME_UPDATES) || defined(HARBOR_PKG_DIRECT_TEST) || defined(HARBOR_PKG_PAYLOAD_TEST) || defined(HARBOR_PKG_INSTALLER_TEST)
  if(op==1&&destination){snprintf(error,cap,"Este canal de teste requer o disco interno.");return -1;}
+ if(op==3){snprintf(error,cap,"A limpeza requer o canal de atualizacoes manual.");return -1;}
 #endif
  lock(&app.mu);
  if(app.update.install_sent){unlock(&app.mu);snprintf(error,cap,"O pedido de instalacao ja foi enviado. Confirma a nova versao quando voltares a abrir a app; nao repitas o pedido.");return -1;}
  if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Aguarda pela operacao atual. Se ja enviaste a atualizacao, consulta as Transferencias da PS4.");return -1;}
- if(op&&(!app.update.available||app.update.manifest.build<=APP_BUILD||(op==2&&!app.update.ready))){unlock(&app.mu);snprintf(error,cap,"Verifica e descarrega uma atualizacao valida primeiro.");return -1;}
- app.update.busy=1;if(op==1){app.update.destination=destination;app.update.done=0;app.update.ready=0;app.update.path[0]=0;}unlock(&app.mu);
- status(op==0?"checking":op==1?"downloading":"installing",op==0?"A procurar atualizacoes...":op==1?"A descarregar a atualizacao...":"A verificar e preparar a instalacao...");
- Thread t;if(thread_start(&t,worker,(void*)(intptr_t)op)){lock(&app.mu);app.update.busy=0;unlock(&app.mu);snprintf(error,cap,"Nao foi possivel iniciar a atualizacao.");status("error",error);return -1;}
+ if((op==1||op==2)&&(!app.update.available||app.update.manifest.build<=APP_BUILD||(op==2&&!app.update.ready))){unlock(&app.mu);snprintf(error,cap,"Verifica e descarrega uma atualizacao valida primeiro.");return -1;}
+ app.update.busy=1;if(op==1){app.update.destination=destination;app.update.done=0;app.update.ready=0;app.update.path[0]=0;}if(op==3){app.update.cleanup_destination=destination;snprintf(app.update.cleanup_message,sizeof(app.update.cleanup_message),"A apagar ficheiros de atualizacoes anteriores...");}unlock(&app.mu);
+ if(op!=3)status(op==0?"checking":op==1?"downloading":"installing",op==0?"A procurar atualizacoes...":op==1?"A descarregar a atualizacao...":"A verificar e preparar a instalacao...");
+ Thread t;if(thread_start(&t,worker,(void*)(intptr_t)op)){lock(&app.mu);app.update.busy=0;if(op==3)snprintf(app.update.cleanup_message,sizeof(app.update.cleanup_message),"Nao foi possivel iniciar a limpeza.");unlock(&app.mu);snprintf(error,cap,"Nao foi possivel iniciar a operacao.");if(op!=3)status("error",error);return -1;}
 #ifdef _WIN32
  CloseHandle(t);
 #else
@@ -125,4 +135,5 @@ static int begin(int op,int destination,char *error,size_t cap){
 }
 int updater_begin(int op,char *error,size_t cap){return begin(op,0,error,cap);}
 int updater_download_to(const char *id,char *error,size_t cap){return begin(1,update_destination_id(id),error,cap);}
+int updater_cleanup_to(const char *id,char *error,size_t cap){return begin(3,update_destination_id(id),error,cap);}
 void updater_init(void){app.update.task=-1;status("idle",updater_supported()?"Verifica se existe uma nova versao.":"As atualizacoes da aplicacao requerem uma PS4 real.");if(updater_supported()){char error[512]={0};updater_begin(0,error,sizeof(error));}}
