@@ -51,7 +51,7 @@ static void *worker(void *arg){
 #elif defined(HARBOR_PKG_PAYLOAD_TEST)
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarregar, fechar e instalar automaticamente (teste GoldHEN).",m.version);
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
-  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. No telemovel, escolhe Descarregar e instalar (teste). Requer h1pNoise Updater.",m.version);
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Na app ou no site, escolhe Descarregar e instalar (teste). Requer h1pNoise Updater.",m.version);
 #else
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarrega o PKG e instala manualmente com a app fechada.",m.version);
 #endif

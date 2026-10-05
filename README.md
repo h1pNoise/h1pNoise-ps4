@@ -1,15 +1,15 @@
 # h1pNoise — PlayStation 4
 
-Central de transferências para PS4 com GoldHEN. Liga o telemóvel pelo QR ou pelo código de quatro números para enviar torrents, magnets e links diretos PKG, acompanhar o progresso e descarregar atualizações da app.
+Central de transferências para PS4 com GoldHEN. Liga-te pela app ou pelo site, usando o QR ou o código de quatro números para enviar torrents, magnets e links diretos PKG, acompanhar o progresso e descarregar atualizações da app.
 
-**0.1.59: teste antes da 1.0.0.** O utilizador confirmou o funcionamento da 0.1.56 na sua consola. Esta candidata acrescenta a escolha de cor à apresentação; mantém o mesmo motor de transferências, acesso USB e instalação manual das atualizações. A compatibilidade reportada é PS4 13.50 com GoldHEN. Outros firmwares precisam de confirmação própria.
+**0.1.60: teste antes da 1.0.0.** O utilizador confirmou o funcionamento da 0.1.56 na sua consola. Esta candidata ajusta os textos para a app e o site, incluindo o acesso pelo computador; mantém o mesmo motor de transferências, acesso USB e instalação manual das atualizações. A compatibilidade reportada é PS4 13.50 com GoldHEN. Outros firmwares precisam de confirmação própria.
 
 ## Instalar e ligar
 
 1. Descarrega o PKG em [Releases](https://github.com/h1pNoise/h1pNoise-ps4/releases).
 2. Fecha a h1pNoise. No Package Installer do GoldHEN, desliga **Enable Background Installation** e instala o PKG. Aceita substituir se for pedido; não desinstales primeiro.
-3. Abre a app na PS4. Liga o telemóvel à mesma rede Wi-Fi e lê o QR da televisão. Em alternativa, abre o endereço apresentado e introduz o código de quatro números.
-4. O nome e a versão aparecem na televisão e na página do telemóvel.
+3. Abre a app na PS4. Liga o telemóvel ou computador à mesma rede da consola. Na app do telemóvel, usa o QR ou o endereço e o código. Num navegador do telemóvel ou computador, abre o endereço apresentado e introduz o código de quatro números.
+4. O nome e a versão aparecem na televisão e na app ou no site.
 
 ## Transferências
 

@@ -55,7 +55,7 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
 #ifdef HARBOR_RUNTIME_UPDATES
   snprintf(update,sizeof(update),"Nova versão %s · X para atualizar",s->update_version);
 #else
-  snprintf(update,sizeof(update),"Nova versão %s · Descarrega pelo telemóvel",s->update_version);
+  snprintf(update,sizeof(update),"Nova versão %s · Atualiza na app ou no site",s->update_version);
 #endif
   text(159,84,update,0,MINT,800);}
  else text(159,84,"CENTRAL DE TRANSFERÊNCIAS",0,MUTED,600);
@@ -65,7 +65,7 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
  int direct=!s->busy&&s->direct_phase[0];int error=direct?!strcmp(s->direct_phase,"error"):!strcmp(s->phase,"error");
  text(84,191,s->update_active?"ATUALIZAÇÃO DA APP":direct?"LINK DIRETO PKG":"TRANSFERÊNCIA ATUAL",0,MINT,430);
  const char *status=direct?(s->direct_busy?"A verificar o link":error?"Requer atenção":"Enviado para a PS4"):s->loaded?phase(s->phase):"Sem atividade";
- if(s->update_active)status="Segue no telemóvel";
+ if(s->update_active)status="Segue na app ou no site";
  int sw=width(status,0)+28;rounded(786-sw,185,sw,32,16,error?0xff34291b:accent_soft);text(800-sw,190,status,0,error?WARN:MINT,sw-28);
  char value[120];
  if(s->update_active){
@@ -87,28 +87,28 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
   if(s->direct_task>=0){snprintf(value,sizeof(value),"Pedido %d · Notificações > Transferências",s->direct_task);text(84,447,value,0,MINT,702);}
   else if(s->direct_busy){int offset=(s->frame*11)%532;rounded(84,446,702,5,2,LINE);rounded(84+offset,446,170,5,2,accent_bar);}
  }else if(!s->loaded){
-  text(84,244,"Tudo pronto.",3,TEXT,680);text(86,312,"O próximo download começa no teu telemóvel.",1,MUTED,700);
-  rounded(84,376,702,78,12,accent_soft);text(106,390,"01  Lê o QR e liga-te à consola.",1,MINT,650);text(106,420,"02  Envia um torrent ou cola um link PKG.",1,TEXT,650);
+  text(84,244,"Tudo pronto.",3,TEXT,680);text(86,312,"O próximo download começa na app ou no site.",1,MUTED,700);
+  rounded(84,376,702,78,12,accent_soft);text(106,390,"01  Liga-te pela app ou pelo site.",1,MINT,650);text(106,420,"02  Envia um torrent ou cola um link PKG.",1,TEXT,650);
  }else{
   wrap(84,230,s->name,2,TEXT,702,2);double ratio=s->total?(double)s->done/s->total:0;if(ratio>1)ratio=1;
   if(s->total)snprintf(value,sizeof(value),"%.1f%%",ratio*100);else snprintf(value,sizeof(value),"A preparar");text(84,308,value,s->total?3:2,TEXT,220);
   snprintf(value,sizeof(value),"%.2f / %.2f GB",s->done/1e9,s->total/1e9);if(s->total)text(286,331,value,1,MUTED,480);
   rounded(84,374,702,7,3,LINE);if(ratio>0)rounded(84,374,(int)(702*ratio),7,3,accent_bar);
   wrap(84,399,s->message,1,error?WARN:MUTED,702,2);
-  snprintf(value,sizeof(value),"%d fontes ligadas  ·  Controlo no telemóvel",s->peers);text(84,457,value,0,MUTED,702);
+  snprintf(value,sizeof(value),"%d fontes ligadas  ·  Controlo na app ou no site",s->peers);text(84,457,value,0,MUTED,702);
  }
  text(82,531,"ESPAÇO LIVRE PARA TORRENTS",0,MUTED,320);
  if(s->space_known){snprintf(value,sizeof(value),"%.2f GB",s->available/1e9);text(82,558,value,2,TEXT,310);}
  else text(82,558,"Medição indisponível",2,TEXT,310);
  text(82,610,s->space_known?"A instalação precisa de espaço adicional.":"Confirma nas definições de armazenamento.",0,MUTED,315);
  text(470,531,"DESTINO DOS TORRENTS",0,MUTED,315);text(470,558,"/data/pkg",2,MINT,315);text(470,610,"Os PKG ficam guardados após instalar.",0,MUTED,315);
- center(1032,188,"Liga o teu telemóvel",2,TEXT,334);center(1032,226,"Lê o QR com a câmara",0,MUTED,326);
+ center(1032,188,"Liga-te à consola",2,TEXT,334);center(1032,226,"Lê o QR ou abre o endereço",0,MUTED,326);
  if(has_qr){int count=qrcodegen_getSize(qr),scale=6,border=4,side=(count+border*2)*scale,x0=1032-side/2,y0=264;
   rounded(x0-8,y0-8,side+16,side+16,12,0xffffffff);rect(x0,y0,side,side,0xffffffff);
   for(int y=0;y<count;y++)for(int x=0;x<count;x++)if(qrcodegen_getModule(qr,x,y))rect(x0+(x+border)*scale,y0+(y+border)*scale,scale,scale,0xff000000);
   snprintf(value,sizeof(value),"http://%s:%d",s->ip,s->port);center(1032,554,value,1,MINT,332);
   snprintf(value,sizeof(value),"Código: %s",s->pin);center(1032,589,value,0,TEXT,332);
  }else{center(1032,352,"Sem ligação à rede",2,WARN,334);wrap(873,401,"Liga a PS4 à rede e volta a abrir a aplicação para gerar o QR.",1,MUTED,318,3);}
- center(1032,620,"Telemóvel e consola na mesma rede",0,MUTED,332);
+ center(1032,620,"Dispositivo e PS4 na mesma rede",0,MUTED,332);
  text(56,678,"Torrents: mantém a app aberta e a PS4 ligada.",0,MUTED,660);
 }
