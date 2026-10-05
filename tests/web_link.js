@@ -14,7 +14,7 @@ const nodes=Object.fromEntries(ids.map(id=>[id,node(id)]));
 const state={loaded:false,busy:false,directSupported:true,directBusy:false,directTask:-1,directPhase:'idle',directMessage:'',phase:'idle',name:'',total:0,done:0,peers:0,message:'Envia um torrent.',free:null,files:[],storagePath:'/data/pkg'};
 let networkError=false,lastPost=null,postHold=null,authStatus=0,requests=0;
 const ctx=vm.createContext({
- document:{getElementById:id=>{assert.ok(nodes[id],id);return nodes[id];},createElement:()=>node(),body:node()},
+ document:{getElementById:id=>{assert.ok(nodes[id],id);return nodes[id];},createElement:()=>node(),body:node(),documentElement:{style:{setProperty(){}}}},localStorage:{getItem(){return null;},setItem(){}},
  URL,URLSearchParams,AbortController,TextEncoder,location:{hash:'',origin:'http://192.168.1.10:8787',pathname:'/',search:''},history:{},navigator:{},window:{},matchMedia:()=>({matches:false}),
  performance:{now:()=>now},setInterval(){},setTimeout(){return 1;},clearTimeout(){},
  fetch:async(url,options)=>{

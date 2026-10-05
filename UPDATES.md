@@ -32,7 +32,7 @@ O canal legado `releases/current/update.h1p` e os canais de teste dos instalador
 6. Verifica a assinatura com a chave pública, SHA-512, identidade, versão e URL. Só depois publica os bytes exatos em releases/manual-v1/current.h1p.
 7. Confirma que os restantes canais e ficheiros das releases foram preservados.
 
-Para uma versão estável, usa uma release sem Pre-release e marcada Latest. A 0.1.57 é a candidata de teste antes da 1.0.0; aguarda a validação da consola antes de marcar a versão final.
+Para uma versão estável, usa uma release sem Pre-release e marcada Latest. A 0.1.58 é a candidata de teste antes da 1.0.0; aguarda a validação da consola antes de marcar a versão final.
 
 ## Formato assinado
 
