@@ -3,18 +3,7 @@
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
 #include "installer_access.h"
 #include "vendor/libjbc/jailbreak.h"
-#include <sys/syscall.h>
-/* The SDK's renameat/unlinkat return ENOSYS on PS4. Use the kernel ABI,
-   relative to an opened USB directory, after restoring the app's roots. */
-#ifdef HARBOR_USB_TEST
-extern int update_usb_native(int,int,const char *,int,const char *);
-#else
-static int update_usb_native(int number,int fd,const char *name,int value,const char *other){
- long result;unsigned char failed;register long fourth __asm__("r10")=(long)other;
- __asm__ volatile("syscall; setc %1":"=a"(result),"=qm"(failed):"a"((long)number),"D"((long)fd),"S"(name),"d"((long)value),"r"(fourth):"rcx","r11","memory");
- if(failed){errno=(int)result;return -1;}return (int)result;
-}
-#endif
+enum { USB_OPEN, USB_RENAME, USB_REMOVE };
 static int usb_access_failed;
 static void usb_diagnostic(const char *step,int direct,int elevated,int restored){
 #ifndef HARBOR_USB_TEST
@@ -24,43 +13,31 @@ static void usb_diagnostic(const char *step,int direct,int elevated,int restored
  (void)step;(void)direct;(void)elevated;(void)restored;
 #endif
 }
-static int usb_retryable(int error){return error==EPERM||error==EACCES||error==ENOENT||error==ENOSYS;}
-static int usb_operation(int number,int directory,const char *name,int value,const char *other,const char *path,const char *to){
+static int usb_operation(int operation,int flags,const char *path,const char *to){
  if(usb_access_failed){errno=EIO;return -1;}
- int rc=update_usb_native(number,directory,name,value,other);
- if(rc>=0)return rc;
- int direct=errno,activated=-999,restored=-999,operation_error=direct;
- /* An external directory descriptor is readable without necessarily granting
-    creation/rename rights. Retry permission denial on that same descriptor.
-    First keep cdir/rdir/jdir unchanged, as for the disk-space query. */
- if(usb_retryable(direct)){
-  if(installer_credentials_trylock()){errno=EBUSY;usb_diagnostic("credentials-busy",direct,-999,-999);return -1;}
-  struct jbc_cred saved,elevated;
-  if(!jbc_get_cred(&saved)){
-   elevated=saved;
-   if(!jbc_jailbreak_cred(&elevated)){
-    struct jbc_cred permissions=elevated;
-    permissions.cdir=saved.cdir;permissions.rdir=saved.rdir;permissions.jdir=saved.jdir;
-    activated=jbc_set_cred(&permissions);
-    if(!activated){rc=update_usb_native(number,directory,name,value,other);operation_error=rc<0?errno:0;}
-    /* Some firmware refuses directory-relative access outside the app root,
-       or does not expose this syscall. The known USB path can then be opened
-       through libc under a short full-root scope. Never hold it for the stream. */
-    if(!activated&&rc<0&&usb_retryable(operation_error)){
-     activated=jbc_set_cred(&elevated);
-     if(!activated){
-      rc=number==SYS_openat?open(path,value,(mode_t)(uintptr_t)other):number==SYS_renameat?rename(path,to):unlink(path);
-      operation_error=rc<0?errno:0;
-     }
-    }
-    restored=jbc_set_cred(&saved);
-    if(activated||restored){if(rc>=0&&number==SYS_openat)close(rc);rc=-1;operation_error=EIO;}
-    if(restored)usb_access_failed=1;
+ int rc=-1,activated=-999,restored=-999,operation_error=EIO;
+ /* PS4 13.50 rejects the directory-relative calls with EINVAL/EFAULT.
+    Use libkernel-backed libc calls on the validated absolute USB path.
+    Keep the full-root scope limited to this call, never the network/stream. */
+ if(installer_credentials_trylock()){errno=EBUSY;usb_diagnostic("credentials-busy",-999,-999,-999);return -1;}
+ struct jbc_cred saved,elevated;
+ if(!jbc_get_cred(&saved)){
+  elevated=saved;
+  if(!jbc_jailbreak_cred(&elevated)){
+   activated=jbc_set_cred(&elevated);
+   if(!activated){
+    errno=0;
+    rc=operation==USB_OPEN?open(path,flags,0666):operation==USB_RENAME?rename(path,to):unlink(path);
+    operation_error=rc<0?errno:0;
    }
+   /* Even partially failed activation must restore all saved credentials. */
+   restored=jbc_set_cred(&saved);
+   if(activated||restored){if(rc>=0&&operation==USB_OPEN)close(rc);rc=-1;operation_error=EIO;}
+   if(restored)usb_access_failed=1;
   }
-  installer_credentials_unlock();
  }
- usb_diagnostic(number==SYS_openat?"open-file":number==SYS_renameat?"rename-file":"remove-part",direct,rc>=0?0:operation_error,restored);
+ installer_credentials_unlock();
+ usb_diagnostic(operation==USB_OPEN?"absolute-open":operation==USB_RENAME?"absolute-rename":"absolute-remove",activated,operation_error,restored);
  errno=operation_error;return rc;
 }
 static int usb_directory(int id,char *error,size_t cap){
@@ -87,7 +64,7 @@ static int usb_directory(int id,char *error,size_t cap){
 #endif
  return fd;
 }
-/* Only deterministic update filenames are accepted for directory-relative I/O. */
+/* Only deterministic filenames directly in the USB root are accepted. */
 static const char *usb_name(const char *path){
  if(strncmp(path,"/mnt/usb0/",10)&&strncmp(path,"/mnt/usb1/",10))return NULL;
  const char *name=strrchr(path,'/');if(!name||name!=path+9)return NULL;name++;
@@ -136,7 +113,7 @@ FILE *update_destination_file(int directory,const char *path,const char *mode){
   const char *name=usb_name(path);if(!name){errno=EINVAL;return NULL;}
   if(strcmp(mode,"wb")&&strcmp(mode,"rb")){errno=EINVAL;return NULL;}
   int flags=(!strcmp(mode,"wb")?O_WRONLY|O_CREAT|O_TRUNC:O_RDONLY)|O_NOFOLLOW;
-  int fd=usb_operation(SYS_openat,directory,name,flags,(const char *)(uintptr_t)0666,path,NULL);
+  int fd=usb_operation(USB_OPEN,flags,path,NULL);
   if(fd<0)return NULL;FILE *f=fdopen(fd,mode);if(!f){int reason=errno;close(fd);usb_diagnostic("fdopen",reason,-999,-999);errno=reason;}return f;
  }
 #else
@@ -146,7 +123,7 @@ FILE *update_destination_file(int directory,const char *path,const char *mode){
 }
 int update_destination_remove(int directory,const char *path){
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
- if(directory>=0){const char *name=usb_name(path);return name?usb_operation(SYS_unlinkat,directory,name,0,NULL,path,NULL):-1;}
+ if(directory>=0){const char *name=usb_name(path);return name?usb_operation(USB_REMOVE,0,path,NULL):-1;}
 #else
  (void)directory;
 #endif
@@ -154,7 +131,7 @@ int update_destination_remove(int directory,const char *path){
 }
 int update_destination_rename(int directory,const char *from,const char *to){
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
- if(directory>=0){const char *a=usb_name(from),*b=usb_name(to);return a&&b?usb_operation(SYS_renameat,directory,a,directory,b,from,to):-1;}
+ if(directory>=0){const char *a=usb_name(from),*b=usb_name(to);return a&&b&&!strncmp(from,to,10)?usb_operation(USB_RENAME,0,from,to):-1;}
 #else
  (void)directory;
 #endif
