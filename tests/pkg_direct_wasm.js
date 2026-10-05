@@ -94,11 +94,11 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceBgftServiceIntDebugDownloadRegisterPkg:()=>{throw Error('Unexpected remote patch registration');},
   sceKernelSendNotificationRequest:()=>{notifications++;return 0;}
  };
- let nativeCalls=0,sleeps=0;
+ let nativeCalls=0,sleeps=0,fileModes,initializedAuthorized=false;
  const attempt='/data/harbor/pkg-direct-attempt.h1p',copyPath=packagePath+'.install.pkg',installedPath='/user/app/HBRW00001/app.pkg';
  env.mkdir=p=>{assert.equal(str(p),'/data/harbor');return 0;};
  env.access=p=>files.has(str(p))?0:-1;
- env.open=(p,flags)=>{p=str(p);if(p.startsWith('/system/')){const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;}if(files.has(p))return -1;if(cfg.copyOpenFail&&p===copyPath)return -1;files.set(p,Buffer.alloc(0));const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;};
+ env.open=(p,flags,mode)=>{p=str(p);if(p==='/user'+copyPath){if(cfg.aliasDenied){put32(error,13);return -1;}assert.ok(files.has(copyPath));const id=++handleId;handles.set(BigInt(id),{path:copyPath,at:0});return id;}if(p.startsWith('/system/')){const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;}if(files.has(p))return -1;if(cfg.copyOpenFail&&p===copyPath)return -1;files.set(p,Buffer.alloc(0));fileModes.set(p,v().getUint32(Number(mode),true)&~0o077);const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;};
  env.close=id=>{assert.ok(handles.delete(BigInt(id)));return 0;};
  env.write=(id,p,n)=>{const h=handles.get(BigInt(id));if(cfg.copyWriteFail&&h.path===copyPath)return -1n;const count=cfg.shortWrites?Math.min(32768,Number(n)):Number(n);files.set(h.path,Buffer.concat([files.get(h.path),Buffer.from(m().subarray(Number(p),Number(p)+count))]));return BigInt(count);};
  env.fileno=id=>Number(id);
@@ -108,11 +108,19 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  env.fprintf=()=>0;
  env.fopen=(p,mode)=>{p=str(p);mode=str(mode);if(mode==='rb'&&!files.has(p))return 0n;if(mode==='wb'||mode==='a'&&!files.has(p))files.set(p,Buffer.alloc(0));const id=BigInt(++handleId);handles.set(id,{path:p,at:mode==='a'?files.get(p).length:0});return id;};
  env.remove=p=>{p=str(p);assert.ok(p.endsWith('.pkg.part')||p===copyPath||p===attempt,'Original PKG must not be deleted');files.delete(p);return 0;};
- env.sceAppInstUtilInitialize=()=>cfg.initFail?-123:0;
+ env.sceAppInstUtilInitialize=()=>{assert.ok(privileged,'Initialize must share installation authorization');initializedAuthorized=true;return cfg.initFail?-123:0;};
+ env.geteuid=()=>17;
+ env.__errno_location=()=>error;
+ env.fchmod=(id,mode)=>{const h=handles.get(BigInt(id));assert.equal(h.path,copyPath);assert.equal(mode,0o644);if(cfg.chmodFail)return -1;fileModes.set(h.path,mode);return 0;};
  env.sceKernelLoadStartModule=()=>-123n;
  env.sceAppInstUtilAppInstallPkg=(p,reserved)=>{
   assert.ok(privileged);assert.equal(str(p),'/user'+copyPath);assert.equal(reserved,0n);assert.deepEqual(files.get(copyPath),pkg);assert.deepEqual(files.get(attempt),signed());nativeCalls++;
-  if(cfg.installFail)return -123;
+  assert.ok(initializedAuthorized);assert.equal(fileModes.get(attempt),0o600,'Attempt must remain private');
+  // Reproduce the EACCES seen on the PS4 when a different service UID cannot
+  // read the installer copy. A restrictive creation umask must be corrected.
+  if(!(fileModes.get(copyPath)&0o004))return 0x8002000D|0;
+  assert.equal(fileModes.get(copyPath),0o644);
+  if(cfg.installFail)return 0x8002000D|0;
   if(!cfg.unconfirmed){files.set(installedPath,Buffer.from(pkg));if(cfg.badInstalled)files.get(installedPath).fill(0x99,10000,10001);}
   if(cfg.consumeSource)files.delete(copyPath);return 0;
  };
@@ -128,14 +136,14 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const wasm=fs.readFileSync(process.argv[2]),module=await WebAssembly.compile(wasm);
  for(const imp of WebAssembly.Module.imports(module))assert.ok(api[imp.name],'Missing test import '+imp.name);
  instance=await WebAssembly.instantiate(module,{env:api});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
- function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')],[installedPath,Buffer.from(installedPkg)]]);handles=new Map();handleId=0;requests=[];clock=1000n;nativeCalls=sleeps=0;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
+ function reset(options={}){heap=base+2048;cfg={manifest:signed(),payload:pkg,...options};privileged=false;initializedAuthorized=false;fileModes=new Map();userReady=false;resources=new Set();headerLimits=new Map();files=new Map([['/data/pkg/existing-torrent/file00.pkg',Buffer.from('keep')],[installedPath,Buffer.from(installedPkg)]]);handles=new Map();handleId=0;requests=[];clock=1000n;nativeCalls=sleeps=0;registered=started=notifications=slotQueries=prepared=0;e.fixture_reset();}
  function op(n,ret=0,phase){write(error,'');assert.equal(e.updater_begin(n,error,512n),ret,str(error));assert.equal(resources.size,0,'network cleanup');assert.equal(handles.size,0,'file cleanup');if(!cfg.authRestoreFailure)assert.equal(privileged,false,'permissions not restored');assert.equal(e.fixture_state(0),0,'worker finished');if(phase)assert.equal(str(e.fixture_phase()),phase,str(e.fixture_message()));assert.equal(files.get('/data/pkg/existing-torrent/file00.pkg').toString(),'keep');checks++;}
  function available(options={}){reset(options);op(0,0,'available');assert.equal(e.fixture_state(1),1);assert.equal(notifications,1);}
  // Invalid data, unavailable installed identity, refusal and uncertain outcome.
  available({initFail:true});op(1,0,'error');assert.equal(nativeCalls,0);
- for(const options of [{copyOpenFail:true},{copyWriteFail:true},{copySyncFail:true},{markerSyncFail:true},{authActivateFailure:true},{authRestoreFailure:true},{installFail:true},{unconfirmed:true},{badInstalled:true},{shortWrites:true,consumeSource:true}]){
+ for(const options of [{copyOpenFail:true},{copyWriteFail:true},{copySyncFail:true},{chmodFail:true},{markerSyncFail:true},{authActivateFailure:true},{authRestoreFailure:true},{installFail:true},{unconfirmed:true},{badInstalled:true},{shortWrites:true,consumeSource:true}]){
   available(options);op(1,0,options.shortWrites?'installed':'error');assert.deepEqual(files.get(packagePath),pkg);assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);
-  if(options.copyOpenFail||options.copyWriteFail||options.copySyncFail||options.markerSyncFail||options.authActivateFailure)assert.equal(nativeCalls,0);
+  if(options.copyOpenFail||options.copyWriteFail||options.copySyncFail||options.chmodFail||options.markerSyncFail||options.authActivateFailure)assert.equal(nativeCalls,0);
   if(options.unconfirmed||options.badInstalled){assert.equal(nativeCalls,1);assert.equal(sleeps,60);}
   if(files.has(attempt)){const calls=nativeCalls;const rc=e.updater_begin(1,error,512n);assert.equal(rc,-1);assert.equal(nativeCalls,calls);}
  }
@@ -145,6 +153,8 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  available();files.set(installedPath,pkg);op(1,0,'error');assert.equal(nativeCalls,0);
  available();files.set(attempt,signed());op(1,0,'error');assert.equal(nativeCalls,0);assert.deepEqual(files.get(attempt),signed());
  available();files.set(attempt,Buffer.from('invalid'));op(1,0,'error');assert.equal(nativeCalls,0);
+ available();const retired=[...fields];retired[2]='0.1.35';retired[3]='00.45';retired[4]='45';files.set(attempt,signed(retired));op(1,0,'installed');assert.equal(nativeCalls,1);assert.deepEqual(files.get(attempt),signed());
+ available({aliasDenied:true});op(1,0,'installed');assert.equal(nativeCalls,1);
  available({consumeSource:true});op(1,0,'installed');assert.equal(nativeCalls,1);assert.equal(e.fixture_state(1),0);assert.equal(e.fixture_state(2),0);assert.deepEqual(files.get(packagePath),pkg);assert.deepEqual(files.get(installedPath),pkg);assert.equal(files.has(copyPath),false);assert.match(str(e.fixture_message()),/continua aberta/);op(0,-1);
  assert.equal(WebAssembly.Module.imports(module).some(x=>/AppPrepareOverwrite|AppUnInstall|KillApp|LaunchApp|LoadExec|_exit/.test(x.name)),false);
  console.log(`${checks} direct self-install checks passed (${installed.installedVersion} -> ${installed.candidateVersion}): signature/hash/identity, private copy, native call once, installed PKG confirmation, no BGFT/overwrite preparation/uninstall/helper/exit/restart, uncertainty blocks retry.`);

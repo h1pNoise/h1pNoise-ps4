@@ -4,6 +4,8 @@
 #include "version.h"
 #include "installer_access.h"
 #include <stdbool.h>
+#include <sys/stat.h>
+#include <errno.h>
 #include <orbis/libkernel.h>
 #include <orbis/Sysmodule.h>
 #include <orbis/AppInstUtil.h>
@@ -52,21 +54,28 @@ failed:
  snprintf(error,cap,"Nao foi possivel confirmar a versao atualmente instalada. Nada foi instalado.");return -1;
 }
 static int modules(char *error,size_t cap){
- static int initialized; if(initialized)return 0;
+ static int loaded; if(loaded)return 0;
  int rc=sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL);
  if(rc<0)rc=(int32_t)sceKernelLoadStartModule("/system/common/lib/libSceAppInstUtil.sprx",0,NULL,0,NULL,NULL);
  report("carregar AppInstUtil direto",rc);
  if(rc<0){snprintf(error,cap,"AppInstUtil indisponivel (0x%08X). Envia update-install-debug.log.",(unsigned)rc);return -1;}
- rc=sceAppInstUtilInitialize();report("inicializar AppInstUtil direto",rc);
- if(rc){snprintf(error,cap,"AppInstUtil recusou a inicializacao (0x%08X).",(unsigned)rc);return -1;}
- initialized=1;return 0;
+ loaded=1;return 0;
 }
 static int installed_matches(char *error,size_t cap){
  return update_file_verify("/user/app/HBRW00001/app.pkg",&candidate,error,cap);
 }
 static int native_install(void *unused,char *error,size_t cap){
- (void)unused;report("antes AppInstallPkg; app continua aberta",0);
- int rc=sceAppInstUtilAppInstallPkg(install_path,NULL);
+ (void)unused;
+ /* Initialize in the same temporary ShellCore authorization as installation.
+    Access to the module file alone does not authorize installer IPC. */
+ int rc=sceAppInstUtilInitialize();report("inicializar AppInstUtil com permissoes de instalacao",rc);
+ if(rc){snprintf(error,cap,"AppInstUtil recusou a inicializacao (0x%08X). Envia update-install-debug.log.",(unsigned)rc);return -1;}
+ report("uid efetivo antes de instalar",(int)geteuid());
+ /* Diagnostic only: a sandboxed caller can see /data while ShellCore needs
+    the physical /user/data path. Do not equate caller access with IPC access. */
+ int fd=open(install_path,O_RDONLY);report("abrir caminho fisico da copia",fd<0?-errno:0);if(fd>=0)close(fd);
+ report("antes AppInstallPkg; app continua aberta",0);
+ rc=sceAppInstUtilAppInstallPkg(install_path,NULL);
  report("resultado AppInstallPkg direto",rc);
  if(rc){snprintf(error,cap,"Instalacao direta recusada (0x%08X). O PKG original continua em /data/pkg. Envia update-install-debug.log.",(unsigned)rc);return -1;}
  return 0;
@@ -80,7 +89,12 @@ static int copy_pkg(const char *from,const char *to,char *error,size_t cap){
  while(!bad){size_t n=fread(buffer,1,65536,in);if(!n){bad=ferror(in);break;}if(total+n>candidate.size){bad=1;break;}
   size_t at=0;while(at<n){ssize_t k=write(fd,buffer+at,n-at);if(k<=0){bad=1;break;}at+=(size_t)k;}total+=n;
  }
- free(buffer);fclose(in);if(fsync(fd))bad=1;if(close(fd))bad=1;
+ free(buffer);fclose(in);
+ /* Only this verified installer copy is shared read-only with the system
+    service. Set mode explicitly after writing, even with a restrictive umask.
+    The durable attempt remains private (0600). */
+ if(!bad&&total==candidate.size){int rc=fchmod(fd,0644);report("permissoes da copia 0644",rc);if(rc)bad=1;}
+ if(fsync(fd))bad=1;if(close(fd))bad=1;
  if(bad||total!=candidate.size){remove(to);goto failed;}
  if(update_file_verify(to,&candidate,error,cap)){remove(to);return -1;}return 0;
 failed:snprintf(error,cap,"Nao foi possivel criar a copia de instalacao. O PKG original foi preservado.");return -1;
