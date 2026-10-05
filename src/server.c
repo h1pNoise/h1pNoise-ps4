@@ -5,15 +5,7 @@
 #include "version.h"
 #include "magnet.h"
 #include "appearance.h"
-#ifdef HARBOR_RUNTIME_UPDATES
-#define UPDATE_MODE "runtime"
-#elif defined(HARBOR_PKG_DIRECT_TEST)
-#define UPDATE_MODE "direct-test"
-#elif defined(HARBOR_PKG_INSTALLER_TEST)
-#define UPDATE_MODE "installer-test"
-#else
 #define UPDATE_MODE "manual"
-#endif
 #if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
 #define STORAGE_UNCHECKED "true"
 #else

@@ -1,14 +1,7 @@
 #include "app.h"
 #include "appearance.h"
 #include <signal.h>
-#ifdef HARBOR_RUNTIME_UPDATES
-#include "runtime_update.h"
-#include "version.h"
-#endif
 int main(int argc,char **argv){
-#ifdef HARBOR_RUNTIME_UPDATES
- runtime_log("aplicacao iniciou",APP_BUILD);
-#endif
  memset(&app,0,sizeof(app));mutex_init(&app.mu);mutex_init(&app.io);app.port=8787;app.direct_task=-1;app.update.task=-1;
 #ifdef _WIN32
  snprintf(app.root,sizeof(app.root),"%s",argc>1?argv[1]:"harbor-data");if(argc>2)app.port=atoi(argv[2]);

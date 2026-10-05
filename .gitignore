@@ -1,7 +1,5 @@
 build/
 build-shadps4/
-build-pkg-install-test*/
-build-pkg-direct-test*/
 harbor-data/
 *.pem
 *.key

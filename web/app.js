@@ -98,7 +98,7 @@ function controls(){
  $('update-cleanup').disabled=$('update-cleanup-confirm').disabled=$('update-cleanup-target').disabled=blocked||!u.supported||u.mode!=='manual'||!!u.installSent;
  $('update-download').disabled=blocked||!u.supported||!u.available||(u.ready&&u.mode!=='manual')||!!u.installSent;
  for(const id of ['update-internal','update-usb0','update-usb1'])$(id).disabled=blocked||!u.supported||!u.available;
- $('update-install').disabled=$('update-confirm-install').disabled=blocked||!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||!!u.installSent;
+ $('update-install').disabled=$('update-confirm-install').disabled=true;
 }
 function selectFile(file){
  text('upload-error','');
@@ -167,7 +167,7 @@ function render(d){
  const updateLabels={idle:'Por verificar',checking:'A procurar',current:'Atualizada','channel-old':'Canal desatualizado',available:'Nova versão',downloading:'A descarregar',ready:'Pronta para instalar',installing:'A preparar instalação',installed:'Nova versão instalada',queued:'Enviada para a PS4',error:'Requer atenção'};
  text('update-label',u.supported?(updateLabels[u.phase]||'Por verificar'):'PS4 real');
  badge('update-badge',u.phase==='error'||u.phase==='channel-old'?'warn':u.available?'online':'');
- text('update-version',(u.mode==='direct-test'?'Versão em execução: ':'Versão instalada: ')+(u.current||'—')+(u.phase==='installed'?' · Nova versão instalada: '+u.version:u.available?' · Disponível: '+u.version:''));
+ text('update-version','Versão instalada: '+(u.current||'—')+(u.phase==='installed'?' · Nova versão instalada: '+u.version:u.available?' · Disponível: '+u.version:''));
  text('update-message',u.message||'As atualizações da aplicação requerem uma PS4 real.');
  text('update-notes',u.notes||'');$('update-notes').hidden=!u.available||!u.notes;
  $('update-download').hidden=!u.available||(u.ready&&u.mode!=='manual')||u.busy||u.task>=0;
@@ -178,10 +178,10 @@ function render(d){
  text('update-cleanup-message',d.updateCleanupMessage||'');
  $('update-saved-path').hidden=!u.ready||!d.updatePath;text('update-saved-path','PKG guardado em: '+(d.updatePath||''));
  text('update-usb-help',(d.updateDestinations||[]).some(x=>x.id!=='internal'&&x.available)?'O PKG fica na raiz da pen. Mantém a pen ligada até terminar.':'Escolhe a pen ligada à PS4. A app verifica o acesso antes de descarregar; se falhar, mostra o motivo.');
- $('update-install').hidden=!['runtime','installer-test','direct-test'].includes(u.mode)||!u.ready||u.busy; $('update-confirm').hidden=true;
- text('update-download',u.mode==='direct-test'?'Descarregar e instalar sem fechar (teste)':u.mode==='runtime'?'Atualizar agora':u.mode==='installer-test'?'Descarregar e instalar (teste)':u.ready?'Guardar outra cópia':'Descarregar atualização');
- text('update-install',u.mode==='direct-test'?'Instalar sem fechar (teste)':u.mode==='installer-test'?'Entregar ao Updater (teste)':'Reiniciar com a nova versão');
- text('update-footnote',u.mode==='direct-test'?'Teste: descarrega, verifica e tenta instalar mantendo a app aberta. A nova versão fica disponível na próxima abertura. Não precisa do Updater.':u.mode==='runtime'?'Também podes carregar X no comando da PS4. A app descarrega, verifica e reinicia.':u.mode==='installer-test'?'Teste: instala a app auxiliar h1pNoise Updater uma vez. Depois do download verificado, ela recebe o pedido e a app principal fecha. Se houver uma falha, o PKG fica guardado.':'Fecha a app e instala pelo GoldHEN, com Enable Background Installation desligado. Confirma a substituição se for pedida.');
+ $('update-install').hidden=true; $('update-confirm').hidden=true;
+ text('update-download',u.ready?'Guardar outra cópia':'Descarregar atualização');
+ text('update-install','Instalar pelo GoldHEN');
+ text('update-footnote','Fecha a app e instala pelo GoldHEN, com Enable Background Installation desligado. Confirma a substituição se for pedida.');
  $('update-progress').hidden=$('update-bytes').hidden=!u.size||(!u.ready&&u.phase!=='downloading');
  $('update-progress').value=u.size?Math.min(100,100*u.done/u.size):0;text('update-bytes',size(u.done||0)+' / '+size(u.size||0));
  controls();

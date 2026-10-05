@@ -11,11 +11,6 @@
 #include "display.h"
 #include "pairing.h"
 #include "version.h"
-#ifdef HARBOR_RUNTIME_UPDATES
-#include "runtime_update.h"
-#include "ps4_user.h"
-#include <orbis/Pad.h>
-#endif
 extern int sceRandomGetRandomNumber(void *buf,size_t size);
 static int net_pool=-1;
 int platform_init(char ip[16]){
@@ -105,10 +100,6 @@ int install_pkg(const char *path,const char *name,char *error,size_t cap,void(*p
 #define WIDTH 1280
 #define HEIGHT 720
 void screen_run(const char *ip,const char *pin){
-#ifdef HARBOR_RUNTIME_UPDATES
- int pad=-1;int32_t user;char pad_error[512];unsigned previous_buttons=0;
- if(!ps4_active_user(&user,pad_error,sizeof(pad_error))&&!scePadInit())pad=scePadOpen(user,ORBIS_PAD_PORT_TYPE_STANDARD,0,NULL);
-#endif
  uint8_t qr[PAIRING_QR_BYTES];int has_qr=pairing_qr(ip,app.port,pin,qr);
  char notice[300];snprintf(notice,sizeof(notice),"h1pNoise: http://%s:%d | Codigo: %s",ip,app.port,pin);OrbisNotificationRequest req;memset(&req,0,sizeof(req));req.type=NotificationRequest;req.targetId=-1;snprintf(req.message,sizeof(req.message),"%s",notice);sceKernelSendNotificationRequest(0,&req,sizeof(req),0);
  int video=sceVideoOutOpen(ORBIS_VIDEO_USER_MAIN,ORBIS_VIDEO_OUT_BUS_MAIN,0,NULL);void *mem=NULL;off_t offset=0;size_t bytes=8*1024*1024;int ok=video>=0;
@@ -119,13 +110,6 @@ void screen_run(const char *ip,const char *pin){
  if(!ok){for(;;){sceSystemServicePowerTick();sleep_ms(1000);}}
  int index=0;int64_t frame=0;time_t space_at=0;uint64_t available=0;int space_known=0;
  for(;;){
-#ifdef HARBOR_RUNTIME_UPDATES
-  if(frame==20)runtime_boot_confirm(APP_BUILD);
-  if(pad>=0){OrbisPadData input;memset(&input,0,sizeof(input));if(scePadReadState(pad,&input)>=0){
-   unsigned pressed=input.buttons&~previous_buttons;previous_buttons=input.buttons;
-   if(pressed&ORBIS_PAD_BUTTON_CROSS){lock(&app.mu);int update=app.update.available&&!app.update.busy&&!app.busy&&!app.direct_busy;int ready=app.update.ready;unlock(&app.mu);if(update){char error[512];updater_begin(ready?2:1,error,sizeof(error));}}
-  }}
-#endif
   if(!space_at||time(NULL)-space_at>=5){space_known=!free_bytes(app.root,&available);space_at=time(NULL);}
   DisplayState state;memset(&state,0,sizeof(state));
   state.space_known=space_known;state.available=available;state.frame=(int)(frame%1000000);state.port=app.port;

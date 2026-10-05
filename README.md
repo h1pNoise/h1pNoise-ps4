@@ -1,6 +1,6 @@
 # h1pNoise — PS4
 
-Central de transferências para PS4 com GoldHEN. Envia torrents, magnets ou links diretos PKG pela app ou pelo site no telemóvel/computador, e acompanha o progresso na consola.
+Central de transferências para PS4 com GoldHEN. Envia torrents, magnets ou links diretos PKG pela interface web no telemóvel ou computador, e acompanha o progresso na consola.
 
 ## Funcionalidades
 
@@ -10,7 +10,7 @@ Central de transferências para PS4 com GoldHEN. Envia torrents, magnets ou link
 - Espaço livre do disco interno e torrents guardados em `/data/pkg`.
 - Atualizações assinadas guardadas no disco interno ou na raiz da pen USB.
 - Limpeza das atualizações antigas, preservando os outros PKG.
-- Cor personalizável e sincronizada entre a consola e a app ou o site.
+- Cor personalizável e sincronizada entre a consola e a interface web.
 
 ## Instalar
 
@@ -25,3 +25,7 @@ Usa **Procurar atualização**, escolhe disco interno ou pen exFAT/FAT32 e desca
 Compatibilidade reportada: **PS4 13.50 com GoldHEN**. Para torrents e magnets, mantém a app aberta e a PS4 ligada. Magnets precisam de tracker HTTP/UDP ou fonte direta suportada; sem DHT/PEX. O repouso para links PKG ainda não foi confirmado. Esta revisão foi compilada e testada no PC; ainda sem novo teste físico na consola.
 
 Código sob [GPL-3.0](LICENSE). [Créditos](NOTICE.md) · [Publicar atualizações](UPDATES.md).
+
+## Conteúdo do repositório
+
+Inclui o código da aplicação PS4, a interface web integrada no PKG, os recursos visuais, a ferramenta de compilação e os testes da versão atual. O download para instalar na consola está na [release 1.0.0](https://github.com/h1pNoise/h1pNoise-ps4/releases/tag/1.0.0).
