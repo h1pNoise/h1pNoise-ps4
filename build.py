@@ -10,6 +10,8 @@ def run(args, cwd=None):
 
 def embed():
     page = (ROOT / 'web/index.html').read_text(encoding='utf-8')
+    page = page.replace('id="app-version">h1pNoise', 'id="app-version">VERSÃO '+VERSION['APP_VERSION'])
+    page = page.replace('id="footer-version">h1pNoise', 'id="footer-version">h1pNoise '+VERSION['APP_VERSION'])
     page = page.replace('<link rel="stylesheet" href="/app.css">', '<style>'+ (ROOT/'web/app.css').read_text(encoding='utf-8')+'</style>')
     page = page.replace('<script src="/app.js"></script>', '<script>'+ (ROOT/'web/app.js').read_text(encoding='utf-8')+'</script>')
     raw = page.encode('utf-8')
@@ -118,7 +120,7 @@ def main():
     if a.runtime:files+=' h1pNoise.self'
     run([tools/'create-gp4.exe','-out','pkg.gp4','--content-id='+content,'--files',files],cwd=pkg)
     run([tool,'pkg_build','pkg.gp4','.'],cwd=pkg)
-    output='h1pNoise-'+VERSION['APP_VERSION']+('-payload-test.pkg' if a.pkg_payload_test else '-direct-test.pkg' if a.pkg_direct_test else '-install-test.pkg' if a.pkg_installer_test else '-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')
+    output='h1pNoise-'+VERSION['APP_VERSION']+('-payload-test.pkg' if a.pkg_payload_test else '-direct-test.pkg' if a.pkg_direct_test else '-install-test.pkg' if a.pkg_installer_test else '-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg' if int(VERSION['APP_VERSION'].split('.')[0])==0 else '.pkg')
     artifact=next(pkg.glob('*.pkg'));shutil.copy2(artifact,build/output)
     print('Built',build/output)
     if a.pkg_installer_test:run([os.sys.executable,ROOT/'tools/build_pkg_updater.py','--sdk',sdk,'--llvm',llvm,'--out',build/'updater-helper'])

@@ -51,7 +51,7 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
   text(159,84,update,0,MINT,800);}
  else text(159,84,"CENTRAL DE TRANSFERÊNCIAS",0,MUTED,600);
  rounded(1030,46,194,34,17,has_qr?0xff193229:0xff34291b);center(1127,52,has_qr?(s->emulator?"shadPS4 / teste":"PS4 ligada à rede"):"Rede indisponível",0,has_qr?MINT:WARN,178);
- text(1052,91,APP_VERSION " · Experimental",0,MUTED,174);
+ text(1052,91,"h1pNoise " APP_VERSION,0,MUTED,174);
  card(56,166,758,322);card(840,166,384,482);card(56,510,366,138);card(444,510,370,138);
  int direct=!s->busy&&s->direct_phase[0];int error=direct?!strcmp(s->direct_phase,"error"):!strcmp(s->phase,"error");
  text(84,191,s->update_active?"ATUALIZAÇÃO DA APP":direct?"LINK DIRETO PKG":"TRANSFERÊNCIA ATUAL",0,MINT,430);
