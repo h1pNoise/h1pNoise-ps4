@@ -2,7 +2,7 @@
 
 ## Utilizar na PS4
 
-Em **Atualizações da app**, escolhe **Procurar atualização**. A app também consulta o canal ao abrir. Uma build mais recente mostra a nova versão na televisão e na página do telemóvel.
+Em **Atualizações da app**, escolhe **Procurar atualização**. A app também consulta o canal ao abrir. Uma build mais recente mostra a nova versão na televisão e na app ou no site.
 
 Em **Descarregar atualização**, escolhe disco interno (/data/pkg), Pen USB 1 (/mnt/usb0) ou Pen USB 2 (/mnt/usb1). O PKG fica diretamente na raiz da pen exFAT/FAT32, ou no destino interno, com o nome `h1pNoise-update-<build>.pkg`. A app verifica assinatura, hash, identidade e versão. **Guardar outra cópia** permite repetir o download para outro destino.
 
@@ -32,7 +32,7 @@ O canal legado `releases/current/update.h1p` e os canais de teste dos instalador
 6. Verifica a assinatura com a chave pública, SHA-512, identidade, versão e URL. Só depois publica os bytes exatos em releases/manual-v1/current.h1p.
 7. Confirma que os restantes canais e ficheiros das releases foram preservados.
 
-Para uma versão estável, usa uma release sem Pre-release e marcada Latest. A 0.1.60 é a candidata de teste antes da 1.0.0; aguarda a validação da consola antes de marcar a versão final.
+Para uma versão estável, usa uma release sem Pre-release e marcada Latest. A 1.0.0 é a versão final publicada a pedido do utilizador, com APP_VER 01.00 e build 71. A publicação do canal pode demorar alguns minutos a chegar a todos os pontos de acesso do GitHub; repete Procurar atualização depois desse intervalo.
 
 ## Formato assinado
 

@@ -2,7 +2,7 @@
 
 Central de transferências para PS4 com GoldHEN. Liga-te pela app ou pelo site, usando o QR ou o código de quatro números para enviar torrents, magnets e links diretos PKG, acompanhar o progresso e descarregar atualizações da app.
 
-**0.1.60: teste antes da 1.0.0.** O utilizador confirmou o funcionamento da 0.1.56 na sua consola. Esta candidata ajusta os textos para a app e o site, incluindo o acesso pelo computador; mantém o mesmo motor de transferências, acesso USB e instalação manual das atualizações. A compatibilidade reportada é PS4 13.50 com GoldHEN. Outros firmwares precisam de confirmação própria.
+**1.0.0 — versão final.** Inclui torrents, magnets, links PKG, espaço livre do disco interno, destinos de atualização interno/USB, limpeza das atualizações antigas e cores sincronizadas entre a televisão e a app ou o site. Mantém o funcionamento da 0.1.60. A compatibilidade reportada pelo utilizador é PS4 13.50 com GoldHEN; outros firmwares não foram confirmados. A instalação das atualizações continua manual pelo GoldHEN.
 
 ## Instalar e ligar
 
@@ -55,7 +55,7 @@ python tests/integration.py
 node tests/web_link.js web/index.html
 ```
 
-Os testes do atualizador executam a assinatura, SHA-512, parser e fluxo de produção, simulando as chamadas PS4. O teste real da candidata está em [TESTE_FINAL.md](TESTE_FINAL.md). A publicação do canal está em [UPDATES.md](UPDATES.md).
+Os testes do atualizador executam a assinatura, SHA-512, parser e fluxo de produção, simulando as chamadas PS4. A lista de verificação na consola está em [TESTE_FINAL.md](TESTE_FINAL.md). A publicação do canal está em [UPDATES.md](UPDATES.md).
 
 ## Referências
 
@@ -64,4 +64,4 @@ Os testes do atualizador executam a assinatura, SHA-512, parser e fluxo de produ
 - [Monocypher](https://monocypher.org/)
 - [QR Code generator](https://github.com/nayuki/QR-Code-generator)
 
-As notas das releases anteriores preservam o histórico dos testes e das correções.
+As notas no repositório preservam o histórico dos testes e das correções.
