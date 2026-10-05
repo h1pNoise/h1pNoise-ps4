@@ -3,6 +3,7 @@
    Module ABI reference: flatz's dynlib example and DPI Payload/lib/dl.c. */
 #include "vendor/libjbc/jailbreak.h"
 #include "installer_access.h"
+#include "pkg_update.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
@@ -49,19 +50,28 @@ int payload_module(const char *path){
  return handle;
 }
 int payload_resolve(int handle,const char *name,void **out){*out=NULL;return payload_sym(handle,name,out)||!*out?-1:0;}
-/* Resolve our private /data paths against the real disk after the sandbox
-   escape. Only our calls are translated; the host's routines are untouched. */
-static const char *physical(const char *s,char out[800]){
+/* GoldHEN hosts can expose /data directly. Select the pending request's
+   namespace once, before libc/worker startup; never mix files from two roots. */
+static int data_under_user;
+int payload_select_data_root(void){
+ data_under_user=0;
+ if(!payload_access(PKG_UPDATE_ROOT "/request",0)){payload_progress("pedido acessivel em /data",0);return 0;}
+ payload_progress("sondar pedido em /data",payload_errno);
+ if(!payload_access("/user" PKG_UPDATE_ROOT "/request",0)){data_under_user=1;payload_progress("pedido acessivel em /user/data",0);return 0;}
+ payload_progress("pedido inacessivel em /user/data",payload_errno);return -1;
+}
+const char *payload_data_path(const char *s,char *out,size_t cap){
  if(s&&s[0]=='/'&&s[1]=='d'&&s[2]=='a'&&s[3]=='t'&&s[4]=='a'&&(s[5]=='/'||s[5]==0)){
-  size_t n=strlen(s);if(n+6>=800)return NULL;memcpy(out,"/user",5);memcpy(out+5,s,n+1);return out;
+  size_t n=strlen(s),prefix=data_under_user?5:0;if(n+prefix>=cap)return NULL;
+  if(prefix)memcpy(out,"/user",5);memcpy(out+prefix,s,n+1);return out;
  }return s;
 }
 void *payload_fopen_ptr;
-FILE *fopen(const char *p,const char *mode){char out[800];p=physical(p,out);return p?((FILE*(*)(const char*,const char*))payload_fopen_ptr)(p,mode):NULL;}
-int open(const char *p,int flags,...){char out[800];p=physical(p,out);return p?payload_open(p,flags,0600):-1;}
-int access(const char *p,int mode){char out[800];p=physical(p,out);return p?payload_access(p,mode):-1;}
-int remove(const char *p){char out[800];p=physical(p,out);return p?payload_unlink(p):-1;}
-int rename(const char *a,const char *b){char x[800],y[800];a=physical(a,x);b=physical(b,y);return a&&b?payload_rename(a,b):-1;}
+FILE *fopen(const char *p,const char *mode){char out[800];p=payload_data_path(p,out,sizeof(out));return p?((FILE*(*)(const char*,const char*))payload_fopen_ptr)(p,mode):NULL;}
+int open(const char *p,int flags,...){char out[800];p=payload_data_path(p,out,sizeof(out));return p?payload_open(p,flags,0600):-1;}
+int access(const char *p,int mode){char out[800];p=payload_data_path(p,out,sizeof(out));return p?payload_access(p,mode):-1;}
+int remove(const char *p){char out[800];p=payload_data_path(p,out,sizeof(out));return p?payload_unlink(p):-1;}
+int rename(const char *a,const char *b){char x[800],y[800];a=payload_data_path(a,x,sizeof(x));b=payload_data_path(b,y,sizeof(y));return a&&b?payload_rename(a,b):-1;}
 /* The payload has saved, elevated credentials for its entire bounded
    transaction, restored by payload_main even when initialization fails. */
 int installer_with_access(int (*f)(char*,size_t),char *e,size_t c){return f(e,c);}
@@ -81,7 +91,8 @@ int payload_main(void){
  elevated.jdir=0;elevated.sceProcType=UINT64_C(0x3800000000000010);elevated.sonyCred|=UINT64_C(1)<<62;
  if(jbc_set_cred(&elevated)){int restored=jbc_set_cred(&saved);payload_progress(restored?"falha ao restaurar permissoes":"falha ao ativar acesso ao disco",-1);return -1;}
  payload_progress("acesso ao disco preparado",0);
- int rc=payload_bind_symbols();
+ int rc=payload_select_data_root();
+ if(!rc)rc=payload_bind_symbols();
  if(!rc){payload_progress("modulos preparados; iniciar instalador",0);rc=pkg_update_payload_main();}
  int restored=jbc_set_cred(&saved);
  if(restored)payload_progress("falha ao restaurar permissoes",-1);

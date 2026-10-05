@@ -1,5 +1,15 @@
 # h1pNoise — PS4 0.1.31
 
+## Teste do payload 0.1.46 → 0.1.47
+
+O registo real confirma o arranque e carregamento dos módulos, mas o instalador
+falha antes da confirmação. O novo teste escolhe o caminho acessível entre
+`/data` e `/user/data`, mantém esse caminho durante a operação e regista o
+motivo interno mesmo sem o registo normal. Instala a 0.1.46 manualmente e
+procura a 0.1.47. A instalação/reabertura ainda precisa de confirmação real.
+Consulta os [passos e validação](PKG_PAYLOAD_TEST.md). Canal separado
+`pkg-payload-v4-test`; os restantes canais permanecem inalterados.
+
 ## Testar o canal de atualizações — 0.1.31
 
 Na 0.1.30, carrega **Procurar atualização**: a 0.1.31 anunciada no canal

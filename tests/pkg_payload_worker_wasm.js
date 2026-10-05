@@ -18,7 +18,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  }
  assert.match(packageSfo||'',/^\d{2}\.\d{2}$/);assert.ok(packageSfo>installed.installedSfo,'Supply a package newer than the selected installed version');
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed=process.argv[5];
- assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v3-test\/current\.h1p$/);
+ assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v4-test\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let installedPkg=Buffer.from(pkg);installedPkg.fill(0x44,installedPkg.length-1);
@@ -94,7 +94,9 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   sceBgftServiceIntDebugDownloadRegisterPkg:()=>{throw Error('Unexpected remote patch registration');},
   sceKernelSendNotificationRequest:()=>{notifications++;return 0;}
  };
- let nativeCalls=0,sleeps=0,fileModes,allocated,scheduleConfigured,initializedAuthorized=false;
+ let nativeCalls=0,sleeps=0,fileModes,allocated,scheduleConfigured,initializedAuthorized=false,rawProgress;
+ env.payload_progress=(p,code)=>rawProgress.push({stage:str(p),code});
+ env.payload_data_path=(p,out,cap)=>{const path=(cfg.physicalRoot?'/user':'')+str(p);assert.ok(path.length<Number(cap));write(out,path);return out;};
  const attempt='/data/harbor/pkg-direct-attempt.h1p',copyPath=packagePath+'.payload-install.pkg',installedPath='/user/app/HBRW00001/app.pkg';
  env.mkdir=p=>{assert.equal(str(p),'/data/harbor');return 0;};
  env.access=p=>files.has(str(p))?0:-1;
@@ -112,7 +114,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  env.fseeko=(id,offset,mode)=>{const h=handles.get(id);h.at=(mode===2?files.get(h.path).length:mode===1?h.at:0)+Number(offset);return 0;};
  env.ftello=id=>BigInt(handles.get(id).at);
  env.fprintf=()=>0;
- env.fopen=(p,mode)=>{p=str(p);mode=str(mode);if(mode==='rb'&&!files.has(p))return 0n;if(mode==='wb'||mode==='a'&&!files.has(p))files.set(p,Buffer.alloc(0));const id=BigInt(++handleId);handles.set(id,{path:p,at:mode==='a'?files.get(p).length:0});return id;};
+ env.fopen=(p,mode)=>{p=str(p);mode=str(mode);if(cfg.logUnavailable&&p==='/data/pkg/update-install-debug.log')return 0n;if(mode==='rb'&&!files.has(p))return 0n;if(mode==='wb'||mode==='a'&&!files.has(p))files.set(p,Buffer.alloc(0));const id=BigInt(++handleId);handles.set(id,{path:p,at:mode==='a'?files.get(p).length:0});return id;};
  env.remove=p=>{p=str(p);assert.ok(p.endsWith('.pkg.part')||p===copyPath||p===attempt,'Original PKG must not be deleted');files.delete(p);return 0;};
  env.sceAppInstUtilInitialize=()=>{assert.ok(privileged,'Initialize must share installation authorization');initializedAuthorized=true;return cfg.initFail?-123:0;};
  env.geteuid=()=>17;
@@ -149,19 +151,19 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  env.open=(p,flags,mode)=>{p=str(p);if(p==='/dev/gsched_is.ctl'){assert.ok(privileged);if(cfg.deviceDenied){put32(error,2);return -1;}}else {assert.equal(p,copyPath);if(files.has(p)||cfg.copyOpenFail)return -1;files.set(p,Buffer.alloc(0));fileModes.set(p,0o600);}
   const id=++handleId;handles.set(BigInt(id),{path:p,at:0});return id;};
  env.sceAppInstUtilAppInstallPkg=(p,reserved)=>{
-  assert.equal(str(p),'/user'+copyPath);assert.equal(reserved,0n);assert.ok(privileged);assert.equal(cfg.parentAlive||cfg.parentUnknown||false,false);
+  assert.equal(str(p),(cfg.physicalRoot?'/user':'')+copyPath);assert.equal(reserved,0n);assert.ok(privileged);assert.equal(cfg.parentAlive||cfg.parentUnknown||false,false);
   assert.ok(allocated.has(copyPath));assert.equal(fileModes.get(copyPath),0o644);assert.deepEqual(files.get(copyPath),pkg);assert.deepEqual(files.get(packagePath),pkg);nativeCalls++;
   if(cfg.installFail)return 0x8002000D|0;
   if(!cfg.unconfirmed){files.set(installedPath,Buffer.from(pkg));files.delete(copyPath);}return 0;
  };
- const root='/data/harbor/pkg-payload-v3-updater';let reopened=0;
+ const root='/data/harbor/pkg-payload-v4-updater';let reopened=0;
  for(const imp of WebAssembly.Module.imports(module))assert.ok(env[imp.name],'Missing native payload test mock '+imp.name);
  instance=await WebAssembly.instantiate(module,{env});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
  function run(options={}){
   heap=base+2048;cfg=options;privileged=true;initializedAuthorized=false;fileModes=new Map();allocated=new Set();scheduleConfigured=false;
   files=new Map([[packagePath,Buffer.from(pkg)],[installedPath,Buffer.from(options.alreadyInstalled?pkg:installedPkg)],
    [root+'/request',Buffer.from('1234\n'+'11'.repeat(16)+'\n')],[root+'/manifest.h1p',signed()]]);
-  handles=new Map();handleId=0;nativeCalls=sleeps=reopened=notifications=0;
+  handles=new Map();handleId=0;nativeCalls=sleeps=reopened=notifications=0;rawProgress=[];
   if(options.badHash)files.get(packagePath)[10000]^=1;
   if(options.badSignature)files.get(root+'/manifest.h1p')[0]^=1;
   if(options.claimed)files.set(root+'/claimed',Buffer.from('existing'));
@@ -169,6 +171,8 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   return rc;
  }
  assert.equal(run(),0);assert.equal(nativeCalls,1);assert.equal(reopened,1);assert.equal(files.has(root+'/claimed'),false);
+ assert.equal(run({physicalRoot:true}),0);assert.equal(nativeCalls,1);
+ assert.equal(run({logUnavailable:true,badSignature:true}),1);assert.equal(nativeCalls,0);assert.ok(rawProgress.some(x=>x.stage==='auxiliar independente iniciou'));assert.ok(rawProgress.some(x=>x.stage.includes('assinatura')),'Internal error must survive missing libc log');
  for(const options of [{samePid:true},{parentAlive:true},{parentUnknown:true},{badHash:true},{badSignature:true},{claimed:true},{alreadyInstalled:true},{deviceDenied:true},{truncateFail:true},{scheduleFail:true},{allocateFail:true},{copyOpenFail:true},{copyWriteFail:true},{copySyncFail:true},{chmodFail:true},{initFail:true}]){
   assert.equal(run(options),1,JSON.stringify(options));assert.equal(nativeCalls,0);assert.equal(reopened,0);
  }

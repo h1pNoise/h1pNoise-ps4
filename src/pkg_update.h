@@ -3,7 +3,7 @@
 #include "update_manifest.h"
 #define PKG_UPDATER_TITLE "HBRU00001"
 #ifdef HARBOR_PKG_PAYLOAD_TEST
-#define PKG_UPDATE_ROOT "/data/harbor/pkg-payload-v3-updater"
+#define PKG_UPDATE_ROOT "/data/harbor/pkg-payload-v4-updater"
 #else
 #define PKG_UPDATE_ROOT "/data/harbor/pkg-updater"
 #endif

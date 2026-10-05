@@ -17,7 +17,14 @@
 #include <sys/stat.h>
 extern int32_t sceSystemServiceLaunchApp(const char *,const char **,LncAppParam *);
 static FILE *log_file;
+#ifdef HARBOR_PKG_PAYLOAD_TEST
+extern void payload_progress(const char *,int);
+extern const char *payload_data_path(const char *,char *,size_t);
+#endif
 void link_stage(const char *stage,int result){
+#ifdef HARBOR_PKG_PAYLOAD_TEST
+ payload_progress(stage,result);
+#endif
  if(log_file){fprintf(log_file,"pkg-update-worker %s 0x%08X\n",stage,(unsigned)result);fflush(log_file);fsync(fileno(log_file));}
 }
 static int finish(int rc){if(log_file){fclose(log_file);log_file=NULL;}return rc;}
@@ -139,7 +146,7 @@ static int install(const char *path,char *error,size_t cap){
 #ifdef HARBOR_PKG_PAYLOAD_TEST
  char copy[720];snprintf(copy,sizeof(copy),"%s.payload-install.pkg",path);
  if(copy_pkg(path,copy,error,cap))return -1;
- snprintf(system_path,sizeof(system_path),"/user%s",copy);
+ if(!payload_data_path(copy,system_path,sizeof(system_path))){snprintf(error,cap,"Caminho da copia de instalacao demasiado longo.");return -1;}
 #else
  snprintf(system_path,sizeof(system_path),"/user%s",path);
 #endif
@@ -171,8 +178,10 @@ int main(void){
  if(!access(PKG_UPDATE_ROOT "/claimed",F_OK)){snprintf(error,sizeof(error),"Ja existe um pedido entregue. Consulta update-install-debug.log antes de repetir.");goto failed;}
  if(rename(PKG_UPDATE_ROOT "/request",PKG_UPDATE_ROOT "/claimed")){snprintf(error,sizeof(error),"Nao existe um pedido novo. A h1pNoise prepara-o depois de descarregar.");goto failed;}
  FILE *f=fopen(PKG_UPDATE_ROOT "/claimed","rb");if(f){n=fread(request_raw,1,sizeof(request_raw),f);int bad=ferror(f);fclose(f);if(bad)n=0;}
+ link_stage("bytes lidos do pedido",(int)n);
  PkgUpdateRequest request;if(pkg_update_request_read(request_raw,n,&request)||request.source_pid==(int32_t)getpid()){snprintf(error,sizeof(error),"Pedido de entrega invalido. Nada foi instalado.");goto failed_claimed;}
  f=fopen(PKG_UPDATE_ROOT "/manifest.h1p","rb");if(f){size=fread(raw,1,sizeof(raw),f);int bad=ferror(f);fclose(f);if(bad)size=0;}
+ link_stage("bytes lidos do manifesto",(int)size);
  if(installer_with_access(modules,error,sizeof(error)))goto failed_claimed;
  UpdateManifest signed_candidate;
  if(update_manifest_read(raw,size,UPDATE_PUBLIC_KEY,&signed_candidate,error,sizeof(error)))goto failed_claimed;
@@ -189,6 +198,9 @@ failed_claimed:
     be confirmed. Requires examining the log rather than automatic retries. */
  link_stage("falha; PKG preservado",-1);
 failed:
+#ifdef HARBOR_PKG_PAYLOAD_TEST
+ payload_progress(*error?error:"Falha sem detalhe no instalador",1);
+#endif
  if(log_file){fprintf(log_file,"%s\n",error);fflush(log_file);fsync(fileno(log_file));fclose(log_file);log_file=NULL;}
  notify(*error?error:"O Updater nao concluiu a instalacao. O PKG foi preservado.");return finish(1);
 }
