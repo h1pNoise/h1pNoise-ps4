@@ -13,11 +13,13 @@ typedef struct {FILE *file;crypto_sha512_ctx hash;uint64_t done;} Download;
 static void status(const char *phase,const char *message){lock(&app.mu);snprintf(app.update.phase,sizeof(app.update.phase),"%s",phase);snprintf(app.update.message,sizeof(app.update.message),"%s",message);unlock(&app.mu);}
 static int manifest_sink(const unsigned char *p,size_t n,void *arg){ManifestBuffer *b=arg;if(n>sizeof(b->data)-b->used)return -1;memcpy(b->data+b->used,p,n);b->used+=n;return 0;}
 static int file_sink(const unsigned char *p,size_t n,void *arg){Download *d=arg;if(fwrite(p,1,n,d->file)!=n)return -1;crypto_sha512_update(&d->hash,p,n);d->done+=n;lock(&app.mu);app.update.done=d->done;unlock(&app.mu);return 0;}
-static void path_for(uint32_t build,int destination,char out[700]){
+static void path_for(const UpdateManifest *manifest,int destination,char out[700]){
 #ifdef HARBOR_RUNTIME_UPDATES
- runtime_path(build,"self",out);
+ runtime_path(manifest->build,"self",out);
+#elif defined(HARBOR_PKG_DIRECT_TEST) || defined(HARBOR_PKG_PAYLOAD_TEST) || defined(HARBOR_PKG_INSTALLER_TEST)
+ snprintf(out,700,"%s/h1pNoise-update-%u.pkg",update_destination_root(destination),manifest->build);
 #else
- snprintf(out,700,"%s/h1pNoise-update-%u.pkg",update_destination_root(destination),build);
+ snprintf(out,700,"%s/h1pNoise-%s.pkg",update_destination_root(destination),manifest->version);
 #endif
 }
 int updater_supported(void){
@@ -57,7 +59,7 @@ static void *worker(void *arg){
 #endif
   status("available",msg);if(notify)update_notify(msg);rc=0;
  }else{
-  lock(&app.mu);m=app.update.manifest;int destination=app.update.destination;unlock(&app.mu);char path[700];path_for(m.build,destination,path);
+  lock(&app.mu);m=app.update.manifest;int destination=app.update.destination;unlock(&app.mu);char path[700];path_for(&m,destination,path);
   if(op==1){
 #ifdef HARBOR_RUNTIME_UPDATES
    mkdir("/data/harbor",0777);mkdir(RUNTIME_ROOT,0777);
@@ -70,6 +72,11 @@ static void *worker(void *arg){
    unsigned char digest[64];crypto_sha512_final(&d.hash,digest);
    if(net||io||d.done!=m.size||crypto_verify64(digest,m.sha512)){update_destination_remove(directory,part);if(!*error)snprintf(error,sizeof(error),"Download incompleto ou falha de escrita. Confirma o destino e tenta novamente. A versao instalada nao foi alterada.");goto done;}
    if(update_file_verify_open(update_destination_file(directory,part,"rb"),&m,error,sizeof(error))){update_destination_remove(directory,part);goto done;}
+#if !defined(HARBOR_RUNTIME_UPDATES) && !defined(HARBOR_PKG_DIRECT_TEST) && !defined(HARBOR_PKG_PAYLOAD_TEST) && !defined(HARBOR_PKG_INSTALLER_TEST)
+   if(update_destination_record(destination,directory,app.update.signed_manifest,app.update.signed_size)){
+    update_destination_remove(directory,part);snprintf(error,sizeof(error),"Nao foi possivel registar o ficheiro de atualizacao no destino. Confirma o acesso de escrita e tenta novamente.");goto done;
+   }
+#endif
    /* Only our deterministic update file can be replaced; never torrent content. */
 #ifdef _WIN32
    remove(path);

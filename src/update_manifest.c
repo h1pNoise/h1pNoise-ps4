@@ -30,6 +30,7 @@ int update_manifest_read(const unsigned char *data,size_t n,const unsigned char 
  if(count!=9||start!=length||strcmp(fields[0],format)||strcmp(fields[1],APP_CONTENT_ID))return bad(error,cap,"Esta atualizacao nao pertence a h1pNoise para PS4.");
  size_t vlen=strlen(fields[2]);if(!vlen||vlen>=sizeof(out->version))return bad(error,cap,"Versao invalida.");
  for(size_t i=0;i<vlen;i++)if((fields[2][i]<'0'||fields[2][i]>'9')&&fields[2][i]!='.')return bad(error,cap,"Versao invalida.");
+ int dots=0,digits=0;for(size_t i=0;i<vlen;i++){if(fields[2][i]=='.'){if(!digits||++dots>2)return bad(error,cap,"Versao invalida.");digits=0;}else digits++;}if(dots!=2||!digits)return bad(error,cap,"Versao invalida.");
  if(strlen(fields[3])!=5||fields[3][2]!='.'||fields[3][0]<'0'||fields[3][0]>'9'||fields[3][1]<'0'||fields[3][1]>'9'||fields[3][3]<'0'||fields[3][3]>'9'||fields[3][4]<'0'||fields[3][4]>'9')return bad(error,cap,"Versao PS4 invalida.");
  uint64_t build,size;if(number(fields[4],2147483647,&build)||!build||number(fields[5],UPDATE_PACKAGE_MAX,&size)||size<8192)return bad(error,cap,"Tamanho ou numero de versao invalido.");
  if(strlen(fields[6])!=128)return bad(error,cap,"Resumo do pacote invalido.");

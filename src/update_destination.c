@@ -1,6 +1,8 @@
 #include "app.h"
 #include <errno.h>
 #include "version.h"
+#include "update_config.h"
+#include "pkg_update.h"
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
 #include "installer_access.h"
 #include "vendor/libjbc/jailbreak.h"
@@ -69,8 +71,22 @@ static int usb_directory(int id,char *error,size_t cap){
 static const char *usb_name(const char *path){
  if(strncmp(path,"/mnt/usb0/",10)&&strncmp(path,"/mnt/usb1/",10))return NULL;
  const char *name=strrchr(path,'/');if(!name||name!=path+9)return NULL;name++;
- if(strncmp(name,"h1pNoise-update-",16))return NULL;
- const char *p=name+16;if(*p<'0'||*p>'9')return NULL;while(*p>='0'&&*p<='9')p++;
+ const char *p;
+ if(!strncmp(name,"h1pNoise-update-",16)){
+  p=name+16;if(*p<'0'||*p>'9')return NULL;while(*p>='0'&&*p<='9')p++;
+  return !strcmp(p,".pkg")||!strcmp(p,".pkg.part")?name:NULL;
+ }
+ if(!strncmp(name,".h1pNoise-update-",17)){
+  p=name+17;if(*p<'0'||*p>'9')return NULL;while(*p>='0'&&*p<='9')p++;
+  return !strcmp(p,".h1p")?name:NULL;
+ }
+ if(strncmp(name,"h1pNoise-",9))return NULL;p=name+9;
+ size_t length=0;
+ for(int component=0;component<3;component++){
+  if(*p<'0'||*p>'9')return NULL;
+  do{p++;if(++length>=32)return NULL;}while(*p>='0'&&*p<='9');
+  if(component<2){if(*p++!='.')return NULL;length++;}
+ }
  return !strcmp(p,".pkg")||!strcmp(p,".pkg.part")?name:NULL;
 }
 #endif
@@ -143,16 +159,49 @@ int update_destination_rename(int directory,const char *from,const char *to){
 #endif
  return rename(from,to);
 }
+/* Keep the signed metadata beside each download. Cleanup needs both this
+   record and the matching package hash, never a broad filename wildcard. */
+int update_destination_record(int id,int directory,const unsigned char *data,size_t size){
+ UpdateManifest manifest;char error[128],path[720];
+ if(update_manifest_read(data,size,UPDATE_PUBLIC_KEY,&manifest,error,sizeof(error)))return -1;
+ snprintf(path,sizeof(path),"%s/.h1pNoise-update-%u.h1p",update_destination_root(id),manifest.build);
+ FILE *f=update_destination_file(directory,path,"wb");if(!f)return -1;
+ int rc=fwrite(data,1,size,f)!=size;if(fflush(f))rc=-1;if(fclose(f))rc=-1;
+ if(rc)update_destination_remove(directory,path);return rc;
+}
+static int cleanup_record(int id,int directory,unsigned build,unsigned *removed){
+ char record[720],path[720],error[256];unsigned char data[UPDATE_MANIFEST_MAX+1];UpdateManifest manifest;
+ snprintf(record,sizeof(record),"%s/.h1pNoise-update-%u.h1p",update_destination_root(id),build);
+ errno=0;FILE *f=update_destination_file(directory,record,"rb");if(!f)return errno&&errno!=ENOENT?-1:0;
+ size_t size=fread(data,1,sizeof(data),f);int failed=ferror(f);if(fclose(f))failed=1;if(failed){errno=EIO;return -1;}
+ /* Invalid/tampered records cannot authorize deleting any file. */
+ if(update_manifest_read(data,size,UPDATE_PUBLIC_KEY,&manifest,error,sizeof(error))||manifest.build!=build)return 0;
+ int kept=0;
+ for(int part=0;part<2;part++){
+  snprintf(path,sizeof(path),"%s/h1pNoise-%s.pkg%s",update_destination_root(id),manifest.version,part?".part":"");
+  errno=0;f=update_destination_file(directory,path,"rb");if(!f){if(errno&&errno!=ENOENT)return -1;continue;}
+  /* A user may have replaced a file since download; preserve it if changed. */
+  if(update_file_verify_open(f,&manifest,error,sizeof(error))){kept=1;continue;}
+  if(update_destination_remove(directory,path))return -1;(*removed)++;
+ }
+ if(!kept&&update_destination_remove(directory,record)&&errno!=ENOENT)return -1;
+ return 0;
+}
 int update_destination_cleanup(int id,unsigned *removed,char *error,size_t cap){
  int directory=-1,rc=0;*removed=0;
  if(update_destination_prepare(id,&directory,error,cap))return -1;
  /* Never enumerate or recursively remove content. Only older updater-owned
     build filenames are eligible; installed and newer builds remain intact. */
- for(unsigned build=1;build<APP_BUILD&&!rc;build++)for(int part=0;part<2;part++){
+ for(unsigned build=1;build<APP_BUILD&&!rc;build++){
+  for(int part=0;part<2;part++){
   char path[720];snprintf(path,sizeof(path),"%s/h1pNoise-update-%u.pkg%s",update_destination_root(id),build,part?".part":"");
   errno=0;if(!update_destination_remove(directory,path)){(*removed)++;continue;}
   if(errno==ENOENT)continue;
   snprintf(error,cap,"Falha ao apagar ficheiros antigos em %s (erro %d). Confirma o acesso de escrita.",update_destination_root(id),errno?errno:EIO);rc=-1;break;
+  }
+  if(!rc&&cleanup_record(id,directory,build,removed)){
+   snprintf(error,cap,"Falha ao apagar ficheiros antigos em %s (erro %d). Confirma o acesso de escrita.",update_destination_root(id),errno?errno:EIO);rc=-1;
+  }
  }
 #ifndef _WIN32
  if(directory>=0)close(directory);

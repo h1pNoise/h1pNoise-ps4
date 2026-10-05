@@ -1,6 +1,6 @@
 # Créditos
 
-Harbor 0.1.0 é distribuído sob GNU GPL versão 3, conforme LICENSE.
+A h1pNoise é distribuída sob GNU GPL versão 3, conforme LICENSE.
 
 O pacote PS4 utiliza ferramentas, CRT, bibliotecas e módulos de compatibilidade
 do OpenOrbis 0.5.3 (LLVM 18). Fontes e licenças de upstream:
@@ -24,5 +24,5 @@ src/vendor/monocypher.c, monocypher.h, monocypher-ed25519.c e
 monocypher-ed25519.h: Monocypher 4.0.2, licenças BSD-2-Clause e CC0 conforme
 os cabeçalhos preservados. https://monocypher.org/
 
-Interface 0.1.9: logótipo fornecido pelo utilizador e cobertura bitmap de
+Interface: logótipo fornecido pelo utilizador e cobertura bitmap de
 glifos Segoe UI renderizados localmente. Não distribui ficheiros de fonte.

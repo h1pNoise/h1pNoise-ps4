@@ -17,6 +17,7 @@ int update_destination_prepare(int,int *,char *,size_t);
 FILE *update_destination_file(int,const char *,const char *);
 int update_destination_remove(int,const char *);
 int update_destination_rename(int,const char *,const char *);
+int update_destination_record(int,int,const unsigned char *,size_t);
 typedef int (*UpdateSink)(const unsigned char *,size_t,void *);
 int update_http_get(const char *,uint64_t,UpdateSink,void *,char *,size_t);
 int update_platform_install(const char *,int *,char *,size_t);
