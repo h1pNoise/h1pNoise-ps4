@@ -19,7 +19,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  }
  assert.match(packageSfo||'',/^\d{2}\.\d{2}$/);assert.ok(packageSfo>installed.installedSfo,'Supply a package newer than the selected installed version');
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed=process.argv[5];
- assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v2-test\/current\.h1p$/);
+ assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v3-test\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let instance,heap,cfg,resources,headerLimits,files,handles,handleId,requests,requestUrl,bodyOffset,reply,clock,registered,started,notifications,userReady,privileged,savedCred,slotQueries,prepared;
@@ -96,20 +96,21 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  let launched=0,closed=0,sleeps=0;
  class MainClosed extends Error {}
  env.getpid=()=>1234;
- env.mkdir=p=>{assert.ok(['/data/harbor','/data/harbor/pkg-payload-v2-updater'].includes(str(p)));return 0;};
+ env.mkdir=p=>{assert.ok(['/data/harbor','/data/harbor/pkg-payload-v3-updater'].includes(str(p)));return 0;};
  env.access=p=>files.has(str(p))?0:-1;
- env.open=p=>{p=str(p);assert.equal(p,'/data/harbor/pkg-payload-v2-updater/request');if(files.has(p))return -1;files.set(p,Buffer.alloc(0));return 7;};
+ env.open=p=>{p=str(p);assert.equal(p,'/data/harbor/pkg-payload-v3-updater/request');if(files.has(p))return -1;files.set(p,Buffer.alloc(0));return 7;};
  env.fileno=()=>7;env.fsync=()=>cfg.requestFlushFailure?-1:0;
  env.random_bytes=(p,n)=>{assert.equal(n,16n);m().fill(0x11,Number(p),Number(p)+16);return 0;};
- env.remove=p=>{p=str(p);assert.ok(p.endsWith('.pkg.part')||['/data/harbor/pkg-payload-v2-updater/ack','/data/harbor/pkg-payload-v2-updater/request'].includes(p),'Update PKGs must never be deleted');files.delete(p);return 0;};
+ env.remove=p=>{p=str(p);assert.ok(p.endsWith('.pkg.part')||['/data/harbor/pkg-payload-v3-updater/ack','/data/harbor/pkg-payload-v3-updater/request','/data/harbor/pkg-payload-v3-updater/runtime-status'].includes(p),'Update PKGs must never be deleted');files.delete(p);return 0;};
  env.tcp_connect=(host,port,timeout)=>{assert.equal(str(host),'127.0.0.1');assert.equal(port,9090);assert.equal(timeout,5);return cfg.loaderMissing?-1:77;};
  env.send_all=(sock,data,size)=>{
   assert.equal(sock,77);assert.equal(size,BigInt(payloadBin.length));assert.deepEqual(Buffer.from(m().subarray(Number(data),Number(data)+Number(size))),payloadBin);launched++;
-  const request=files.get('/data/harbor/pkg-payload-v2-updater/request').toString();assert.equal(request,'1234\n'+'11'.repeat(16)+'\n');
-  const manifest=files.get('/data/harbor/pkg-payload-v2-updater/manifest.h1p');assert.deepEqual(manifest,signed());assert.ok(crypto.verify(null,manifest.subarray(64),crypto.createPublicKey(key),manifest.subarray(0,64)));
+  const request=files.get('/data/harbor/pkg-payload-v3-updater/request').toString();assert.equal(request,'1234\n'+'11'.repeat(16)+'\n');
+  const manifest=files.get('/data/harbor/pkg-payload-v3-updater/manifest.h1p');assert.deepEqual(manifest,signed());assert.ok(crypto.verify(null,manifest.subarray(64),crypto.createPublicKey(key),manifest.subarray(0,64)));
   if(cfg.sendFail)return -1;
-  files.set('/data/harbor/pkg-payload-v2-updater/claimed',files.get('/data/harbor/pkg-payload-v2-updater/request'));files.delete('/data/harbor/pkg-payload-v2-updater/request');
-  if(!cfg.noAck)files.set('/data/harbor/pkg-payload-v2-updater/ack',Buffer.from((cfg.wrongAck?'22':'11').repeat(16)));return 0;
+  if(cfg.runtimeStatus)files.set('/data/harbor/pkg-payload-v3-updater/runtime-status',Buffer.from(cfg.runtimeStatus));
+  files.set('/data/harbor/pkg-payload-v3-updater/claimed',files.get('/data/harbor/pkg-payload-v3-updater/request'));files.delete('/data/harbor/pkg-payload-v3-updater/request');
+  if(!cfg.noAck)files.set('/data/harbor/pkg-payload-v3-updater/ack',Buffer.from((cfg.wrongAck?'22':'11').repeat(16)));return 0;
  };
  env.close=id=>{assert.ok(id===7||id===77);return 0;};
  env.fprintf=()=>0;
@@ -130,16 +131,19 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  const binPtr=Number(e.update_payload.value);
  for(const badHeader of [[0x48,0x8d,0x3d,0x09,0xb3],[0xeb,0,0,0,0],[0xe9,0xff,0xff,0xff,0xff],[0xe9,0xff,0xff,0xff,0x7f]]){
   launched=closed=sleeps=0;m().set(badHeader,binPtr);available();op(1,0,'error');assert.equal(launched,0);assert.equal(closed,0);assert.equal(sleeps,0);
-  assert.equal(files.has('/data/harbor/pkg-payload-v2-updater/request'),false);assert.deepEqual(files.get(packagePath),pkg);m().set(payloadBin,binPtr);
+  assert.equal(files.has('/data/harbor/pkg-payload-v3-updater/request'),false);assert.deepEqual(files.get(packagePath),pkg);m().set(payloadBin,binPtr);
  }
  for(const options of [{loaderMissing:true},{sendFail:true},{noAck:true},{wrongAck:true},{requestFlushFailure:true}]){
   launched=closed=sleeps=0;available(options);op(1,0,'error');assert.equal(e.fixture_state(2),1);assert.deepEqual(files.get(packagePath),pkg);assert.equal(closed,0);
   if(options.noAck||options.wrongAck||options.sendFail){assert.equal(sleeps,120);const before=launched;assert.equal(e.updater_begin(2,error,512n),-1);assert.equal(launched,before,'Do not send twice after ambiguous handoff');}
   if(options.loaderMissing||options.requestFlushFailure)assert.equal(launched,0);
-  if(options.loaderMissing)assert.equal(files.has('/data/harbor/pkg-payload-v2-updater/request'),false);
+  if(options.loaderMissing)assert.equal(files.has('/data/harbor/pkg-payload-v3-updater/request'),false);
  }
- available();files.set('/data/harbor/pkg-payload-v2-updater/claimed',Buffer.from('existing independent task'));op(1,0,'error');assert.equal(closed,0);assert.equal(files.get('/data/harbor/pkg-payload-v2-updater/claimed').toString(),'existing independent task');
- available();files.set('/data/harbor/pkg-payload-v2-updater/request',Buffer.from('existing pending task'));op(1,0,'error');assert.equal(closed,0);assert.equal(files.get('/data/harbor/pkg-payload-v2-updater/request').toString(),'existing pending task');
+ available();files.set('/data/harbor/pkg-payload-v3-updater/claimed',Buffer.from('existing independent task'));op(1,0,'error');assert.equal(closed,0);assert.equal(files.get('/data/harbor/pkg-payload-v3-updater/claimed').toString(),'existing independent task');
+ for(const status of ['pkg-payload-runtime falha ao ler permissoes 0xFFFFFFFF\n','pkg-payload-runtime instalador terminou 0x00000000\n']){
+  launched=closed=sleeps=0;available({noAck:true,runtimeStatus:status});op(1,0,'error');assert.equal(closed,0);assert.equal(sleeps,120);assert.match(str(e.fixture_message()),/Diagnostico:/);assert.ok(str(e.fixture_message()).includes(status.trim()));assert.deepEqual(files.get(packagePath),pkg);
+ }
+ available();files.set('/data/harbor/pkg-payload-v3-updater/request',Buffer.from('existing pending task'));op(1,0,'error');assert.equal(closed,0);assert.equal(files.get('/data/harbor/pkg-payload-v3-updater/request').toString(),'existing pending task');
  for(const options of [{payload:Buffer.from(pkg).fill(0,10000,10001)},{payload:pkg.subarray(0,100)},{noSpace:true}]){launched=closed=0;available(options);op(1,0,'error');assert.equal(launched,0);assert.equal(closed,0);}
  launched=closed=0;available();let exited=false;try{e.updater_begin(1,error,512n);}catch(ex){if(!(ex instanceof MainClosed))throw ex;exited=true;}
  assert.equal(exited,true);assert.equal(closed,1);assert.equal(launched,1);assert.deepEqual(files.get(packagePath),pkg);assert.equal(registered,0);assert.equal(started,0);assert.equal(prepared,0);

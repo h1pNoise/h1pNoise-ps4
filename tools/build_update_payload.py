@@ -11,7 +11,7 @@ p=argparse.ArgumentParser()
 for key in ('sdk','llvm','out'):p.add_argument('--'+key,type=Path,required=True)
 a=p.parse_args();sdk=a.sdk.resolve();llvm=a.llvm.resolve();out=a.out.resolve();out.mkdir(parents=True,exist_ok=True)
 def run(args):subprocess.run(list(map(str,args)),check=True)
-sources=['payload_runtime.c','pkg_update_helper.c','pkg_update.c','update_file.c','update_manifest.c','vendor/libjbc/jailbreak.c','vendor/libjbc/kernelrw.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
+sources=['payload_runtime.c','payload_diagnostics.c','pkg_update_helper.c','pkg_update.c','update_file.c','update_manifest.c','vendor/libjbc/jailbreak.c','vendor/libjbc/kernelrw.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']
 objects=[]
 for name in sources:
  obj=out/(Path(name).stem+'.o');objects.append(obj)
@@ -28,15 +28,15 @@ groups={
  'libSceUserService.sprx':['sceUserServiceInitialize','sceUserServiceGetForegroundUser'],
  'libSceSystemService.sprx':['sceSystemServiceLaunchApp'],
 }
-decl=['#include <stddef.h>','extern int payload_module(const char*),payload_resolve(int,const char*,void**);','extern void *payload_fopen_ptr;']
+decl=['#include <stddef.h>','extern int payload_module(const char*),payload_resolve(int,const char*,void**);','extern void *payload_fopen_ptr;','extern void payload_progress(const char*,int);']
 body=['int payload_bind_symbols(void){ int h;']
 for module,names in groups.items():
- body.append(f'h=payload_module("/system/common/lib/{module}");if(h<0)return -1;')
- if module=='libSceLibcInternal.sprx':body.append('if(payload_resolve(h,"fopen",&payload_fopen_ptr))return -1;')
+ body.append(f'payload_progress("carregar {module}",0);h=payload_module("/system/common/lib/{module}");if(h<0){{payload_progress("falha em {module}",h);return -1;}}')
+ if module=='libSceLibcInternal.sprx':body.append('if(payload_resolve(h,"fopen",&payload_fopen_ptr)){payload_progress("API fopen indisponivel",-1);return -1;}')
  for name in names:
   decl.append(f'void *p_{name};')
   decl.append(f'asm(".global {name}\\n{name}:\\njmp *p_{name}(%rip)\\n");')
-  body.append(f'if(payload_resolve(h,"{name}",&p_{name}))return -1;')
+  body.append(f'if(payload_resolve(h,"{name}",&p_{name})){{payload_progress("API {name} indisponivel",-1);return -1;}}')
 body.append('return 0;}')
 bindings=out/'bindings.c';bindings.write_text('\n'.join(decl+body))
 obj=out/'bindings.o';objects.append(obj)

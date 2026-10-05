@@ -10,6 +10,7 @@
 #include <orbis/UserService.h>
 extern int pkg_update_payload_main(void);
 extern int payload_bind_symbols(void);
+extern void payload_progress(const char *,int);
 int payload_errno;
 int *__error(void){return &payload_errno;}
 int *__errno_location(void){return &payload_errno;}
@@ -40,10 +41,11 @@ size_t strlen(const char *s){size_t n=0;while(s[n])n++;return n;}
 struct Segment{uint64_t addr;uint32_t size,flags;};
 struct ModuleInfo{size_t size;char name[256];int id;uint32_t tls_index;uint64_t tls_addr;uint32_t tls_init_size,tls_size,tls_offset,tls_align;uint64_t init,fini,reserved1,reserved2,eh_hdr,eh;uint32_t eh_hdr_size,eh_size;struct Segment segment[4];uint32_t count,refs;};
 int payload_module(const char *path){
- int handle=0;if(payload_load(path,0,&handle,0)||handle<=0)return -1;
+ int handle=0;long loaded=payload_load(path,0,&handle,0);
+ if(loaded||handle<=0){payload_progress("falha syscall 594 carregar modulo",(int)(loaded?loaded:handle));return -1;}
  struct ModuleInfo info;memset(&info,0,sizeof(info));info.size=sizeof(info);
- if(payload_info(handle,0,&info))return -1;
- if(info.refs<2&&info.init){int rc=((int(*)(size_t,void*,void*))(uintptr_t)info.init)(0,NULL,NULL);if(rc)return -1;}
+ long result=payload_info(handle,0,&info);if(result){payload_progress("falha syscall 608 info do modulo",(int)result);return -1;}
+ if(info.refs<2&&info.init){payload_progress("iniciar modulo carregado",handle);int rc=((int(*)(size_t,void*,void*))(uintptr_t)info.init)(0,NULL,NULL);if(rc){payload_progress("falha ao iniciar modulo",rc);return -1;}}
  return handle;
 }
 int payload_resolve(int handle,const char *name,void **out){*out=NULL;return payload_sym(handle,name,out)||!*out?-1:0;}
@@ -72,14 +74,17 @@ failed:snprintf(error,cap,"Seleciona um utilizador na PS4 (0x%08X).",(unsigned)r
 }
 int payload_main(void){
  struct jbc_cred saved,elevated;
- if(jbc_get_cred(&saved))return -1;
- elevated=saved;if(jbc_jailbreak_cred(&elevated))return -1;
+ payload_progress("arranque do BIN",0);
+ if(jbc_get_cred(&saved)){payload_progress("falha ao ler permissoes",-1);return -1;}
+ payload_progress("permissoes guardadas",0);
+ elevated=saved;if(jbc_jailbreak_cred(&elevated)){payload_progress("falha ao resolver acesso ao disco",jbc_resolve_error());return -1;}
  elevated.jdir=0;elevated.sceProcType=UINT64_C(0x3800000000000010);elevated.sonyCred|=UINT64_C(1)<<62;
- if(jbc_set_cred(&elevated)){jbc_set_cred(&saved);return -1;}
+ if(jbc_set_cred(&elevated)){int restored=jbc_set_cred(&saved);payload_progress(restored?"falha ao restaurar permissoes":"falha ao ativar acesso ao disco",-1);return -1;}
+ payload_progress("acesso ao disco preparado",0);
  int rc=payload_bind_symbols();
- if(rc){
-  int fd=payload_open("/user/data/pkg/update-install-debug.log",0x209,0600);
-  if(fd>=0){const char *message="pkg-payload-test falha ao resolver modulos/API; app deve permanecer aberta\n";write(fd,message,strlen(message));close(fd);}
- }else rc=pkg_update_payload_main();
- int restored=jbc_set_cred(&saved);return restored?-1:rc;
+ if(!rc){payload_progress("modulos preparados; iniciar instalador",0);rc=pkg_update_payload_main();}
+ int restored=jbc_set_cred(&saved);
+ if(restored)payload_progress("falha ao restaurar permissoes",-1);
+ else payload_progress(rc?"instalador terminou com falha":"instalador terminou",rc);
+ return restored?-1:rc;
 }

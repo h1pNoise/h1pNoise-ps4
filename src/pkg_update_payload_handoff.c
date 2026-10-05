@@ -34,7 +34,7 @@ int pkg_update_payload_handoff(const char *path,char *error,size_t cap){
  if(!access(PKG_UPDATE_ROOT "/claimed",F_OK)){snprintf(error,cap,"Ja existe uma entrega ao payload. Consulta update-install-debug.log antes de repetir.");return -1;}
  int fd=open(PKG_UPDATE_ROOT "/request",O_WRONLY|O_CREAT|O_EXCL,0600);
  if(fd<0){snprintf(error,cap,"Ja existe um pedido pendente. A app e o PKG foram preservados; envia update-install-debug.log.");return -1;}
- close(fd);remove(PKG_UPDATE_ROOT "/ack");
+ close(fd);remove(PKG_UPDATE_ROOT "/ack");remove(PKG_UPDATE_ROOT "/runtime-status");
  if(store(PKG_UPDATE_ROOT "/manifest.h1p",raw,n)||store(PKG_UPDATE_ROOT "/request",request,(size_t)length)){
   remove(PKG_UPDATE_ROOT "/request");snprintf(error,cap,"Nao foi possivel guardar a entrega ao payload.");return -1;
  }
@@ -44,6 +44,7 @@ int pkg_update_payload_handoff(const char *path,char *error,size_t cap){
  if(sock==BADSOCK){remove(PKG_UPDATE_ROOT "/request");report("GoldHEN 9090 indisponivel; app aberta");snprintf(error,cap,"Liga Enable BinLoader Server no GoldHEN (9090). A app manteve-se aberta e o PKG ficou guardado.");return -1;}
  int sent=send_all(sock,update_payload,update_payload_size);sockclose(sock);
  lock(&app.mu);app.update.install_sent=1;unlock(&app.mu);
+ char sent_detail[128];snprintf(sent_detail,sizeof(sent_detail),"versao %s; BIN %zu bytes; envio %s",APP_VERSION,update_payload_size,sent?"incompleto":"concluido");report(sent_detail);
  report(sent?"envio incompleto; nao repetir sem verificar pedido":"payload enviado; aguardar confirmacao independente");
  /* Closing the socket delivers EOF. Bytes sent alone do not prove execution.
     Close our PID only after the independent verifier writes this exact nonce. */
@@ -56,5 +57,9 @@ int pkg_update_payload_handoff(const char *path,char *error,size_t cap){
   }
   sleep_ms(500);
  }
- snprintf(error,cap,"O payload nao confirmou a entrega. A app continua aberta e o PKG foi preservado. Envia update-install-debug.log.");return -1;
+ char status[192]={0};FILE *f=fopen(PKG_UPDATE_ROOT "/runtime-status","rb");
+ if(f){size_t used=fread(status,1,sizeof(status)-1,f);if(ferror(f))used=0;fclose(f);status[used]=0;for(size_t i=0;i<used;i++)if((unsigned char)status[i]<32)status[i]=' ';}
+ if(*status){report(status);snprintf(error,cap,"O payload nao confirmou a entrega. Diagnostico: %s. App aberta; PKG preservado. Envia update-install-debug.log.",status);}
+ else {report("sem registo de arranque; nao fechar app nem repetir automaticamente");snprintf(error,cap,"O payload nao confirmou a entrega nem registou o arranque. A app continua aberta e o PKG foi preservado. Envia update-install-debug.log.");}
+ return -1;
 }

@@ -32,7 +32,7 @@ test_key=build/'test-only-ed25519.pem'
 test_key.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
 config=build/'update-test-config.h'
 feeds=re.findall(r'^#define UPDATE_FEED_URL "([^"]+)"', (root/'src/update_config.h').read_text(), re.M)
-feed=next(x for x in feeds if '/releases/'+('pkg-payload-v2-test' if a.payload_test else 'runtime' if a.runtime else 'pkg-direct-allocated-test' if a.direct_test else 'pkg-install-test' if a.handoff_test else 'manual-v1')+'/' in x)
+feed=next(x for x in feeds if '/releases/'+('pkg-payload-v3-test' if a.payload_test else 'runtime' if a.runtime else 'pkg-direct-allocated-test' if a.direct_test else 'pkg-install-test' if a.handoff_test else 'manual-v1')+'/' in x)
 config.write_text('''#define H1PNOISE_UPDATE_CONFIG_H
 #define UPDATE_FEED_URL "'''+feed+'''"
 static const unsigned char UPDATE_PUBLIC_KEY[32]={'''+','.join(str(b) for b in public)+'''};

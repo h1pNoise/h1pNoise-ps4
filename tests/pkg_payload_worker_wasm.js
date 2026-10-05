@@ -18,7 +18,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
  }
  assert.match(packageSfo||'',/^\d{2}\.\d{2}$/);assert.ok(packageSfo>installed.installedSfo,'Supply a package newer than the selected installed version');
  const url='https://github.com/test/app/releases/download/v0.1.10/app.pkg',feed=process.argv[5];
- assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v2-test\/current\.h1p$/);
+ assert.match(feed,/^https:\/\/raw\.githubusercontent\.com\/h1pNoise\/h1pNoise-ps4\/main\/releases\/pkg-payload-v3-test\/current\.h1p$/);
  const fields=['H1PNOISE-PS4-UPDATE-1','IV0000-HBRW00001_00-HARBORPS40000000',installed.candidateVersion,packageSfo,String(nextBuild),String(pkg.length),crypto.createHash('sha512').update(pkg).digest('hex'),url,'Atualização de teste'];
  const signed=(f=fields)=>{const body=Buffer.from(f.join('\n')+'\n');return Buffer.concat([crypto.sign(null,body,key),body]);};
  let installedPkg=Buffer.from(pkg);installedPkg.fill(0x44,installedPkg.length-1);
@@ -154,7 +154,7 @@ const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:a
   if(cfg.installFail)return 0x8002000D|0;
   if(!cfg.unconfirmed){files.set(installedPath,Buffer.from(pkg));files.delete(copyPath);}return 0;
  };
- const root='/data/harbor/pkg-payload-v2-updater';let reopened=0;
+ const root='/data/harbor/pkg-payload-v3-updater';let reopened=0;
  for(const imp of WebAssembly.Module.imports(module))assert.ok(env[imp.name],'Missing native payload test mock '+imp.name);
  instance=await WebAssembly.instantiate(module,{env});const e=instance.exports,base=Number(e.__heap_base.value),error=BigInt(base);let checks=0;
  function run(options={}){
