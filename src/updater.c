@@ -36,6 +36,8 @@ static void *worker(void *arg){
   char msg[180];
 #ifdef HARBOR_RUNTIME_UPDATES
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Carrega X no comando para atualizar.",m.version);
+#elif defined(HARBOR_PKG_DIRECT_TEST)
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarregar e instalar sem fechar (teste).",m.version);
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. No telemovel, escolhe Descarregar e instalar (teste). Requer h1pNoise Updater.",m.version);
 #else
@@ -68,6 +70,10 @@ static void *worker(void *arg){
       PKG and the previous working executable are never removed. */
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");update_notify("h1pNoise: a abrir a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
+#elif defined(HARBOR_PKG_DIRECT_TEST)
+   status("installing","PKG verificado. A instalar sem fechar a h1pNoise...");
+   int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
+   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","Nova versao instalada. A app continua aberta; a versao em execucao muda quando voltares a abri-la.");update_notify("h1pNoise: atualizacao instalada. Disponivel na proxima abertura.");}
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
    status("installing","PKG verificado. A entregar a instalacao ao h1pNoise Updater...");
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
@@ -77,7 +83,11 @@ static void *worker(void *arg){
   }else{
    if(update_file_verify(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));lock(&app.mu);app.update.task=task;unlock(&app.mu);
+#ifdef HARBOR_PKG_DIRECT_TEST
+   if(!rc){lock(&app.mu);app.update.ready=app.update.available=0;unlock(&app.mu);status("installed","Nova versao instalada. A app continua aberta; a versao em execucao muda quando voltares a abri-la.");}
+#else
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
+#endif
   }
  }
 done:
@@ -87,6 +97,7 @@ done:
 int updater_begin(int op,char *error,size_t cap){
  if(op<0||op>2||!updater_supported()){snprintf(error,cap,"As atualizacoes da aplicacao requerem uma PS4 real.");return -1;}
  lock(&app.mu);
+ if(app.update.install_sent){unlock(&app.mu);snprintf(error,cap,"O pedido de instalacao ja foi enviado. Confirma a nova versao quando voltares a abrir a app; nao repitas o pedido.");return -1;}
  if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Aguarda pela operacao atual. Se ja enviaste a atualizacao, consulta as Transferencias da PS4.");return -1;}
  if(op&&(!app.update.available||app.update.manifest.build<=APP_BUILD||(op==2&&!app.update.ready))){unlock(&app.mu);snprintf(error,cap,"Verifica e descarrega uma atualizacao valida primeiro.");return -1;}
  app.update.busy=1;if(op==1)app.update.done=0;unlock(&app.mu);

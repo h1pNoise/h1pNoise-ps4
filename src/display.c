@@ -65,6 +65,10 @@ void display_render(uint32_t *pixels,const DisplayState *s,const uint8_t *qr,int
   rounded(84,436,702,7,3,LINE);if(s->update_size){double progress=(double)s->update_done/s->update_size;if(progress>1)progress=1;if(progress>0)rounded(84,436,(int)(702*progress),7,3,MINT);}
 #ifdef HARBOR_RUNTIME_UPDATES
   text(84,456,"X para atualizar · A app reinicia após verificar.",0,MINT,702);
+#elif defined(HARBOR_PKG_DIRECT_TEST)
+  text(84,456,"A app mantém-se aberta · Nova versão na próxima abertura.",0,MINT,702);
+#elif defined(HARBOR_PKG_INSTALLER_TEST)
+  text(84,456,"Teste: instalação entregue ao Updater separado.",0,MINT,702);
 #else
   text(84,456,"GoldHEN: fecha a app e desliga Background Installation.",0,MINT,702);
 #endif

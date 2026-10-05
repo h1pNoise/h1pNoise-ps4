@@ -10,7 +10,9 @@ extern int32_t sceSystemServiceLoadExec(const char *,const char **);
 #endif
 int update_platform_install(const char *path,int *task,char *error,size_t cap){
  *task=-1;
-#if defined(HARBOR_PKG_INSTALLER_TEST)
+#if defined(HARBOR_PKG_DIRECT_TEST)
+ return pkg_update_direct(path,error,cap);
+#elif defined(HARBOR_PKG_INSTALLER_TEST)
  return pkg_update_handoff(path,error,cap);
 #elif defined(HARBOR_RUNTIME_UPDATES)
  lock(&app.mu);uint32_t build=app.update.manifest.build;unlock(&app.mu);

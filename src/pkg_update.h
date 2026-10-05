@@ -18,4 +18,5 @@ int pkg_update_request_read(const unsigned char *,size_t,PkgUpdateRequest *);
 int pkg_update_run(const unsigned char *,size_t,const unsigned char key[32],
  const PkgUpdateRequest *,const PkgUpdateOps *,char *,size_t);
 int pkg_update_handoff(const char *,char *,size_t);
+int pkg_update_direct(const char *,char *,size_t);
 #endif

@@ -6,6 +6,8 @@
 #include "magnet.h"
 #ifdef HARBOR_RUNTIME_UPDATES
 #define UPDATE_MODE "runtime"
+#elif defined(HARBOR_PKG_DIRECT_TEST)
+#define UPDATE_MODE "direct-test"
 #elif defined(HARBOR_PKG_INSTALLER_TEST)
 #define UPDATE_MODE "installer-test"
 #else
@@ -41,7 +43,7 @@ static void status_response(Sock s){
  char direct_msg[3200];jsonstr(direct_msg,sizeof(direct_msg),app.direct_message);
  n+=snprintf(out+n,160000-n,"],\"magnetPending\":%s,\"directSupported\":%s,\"directBusy\":%s,\"directTask\":%d,\"directMessage\":%s,\"directPhase\":\"%s\"",app.magnet_pending?"true":"false",remote_pkg_supported()?"true":"false",app.direct_busy?"true":"false",app.direct_task,direct_msg,app.direct_phase[0]?app.direct_phase:"idle");
  char update_message[3200],notes[4800],update_version[200];jsonstr(update_message,sizeof(update_message),app.update.message);jsonstr(notes,sizeof(notes),app.update.manifest.notes);jsonstr(update_version,sizeof(update_version),app.update.manifest.version);
- n+=snprintf(out+n,160000-n,",\"update\":{\"mode\":\"" UPDATE_MODE "\",\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
+ n+=snprintf(out+n,160000-n,",\"update\":{\"mode\":\"" UPDATE_MODE "\",\"supported\":%s,\"busy\":%s,\"available\":%s,\"ready\":%s,\"installSent\":%s,\"task\":%d,\"phase\":\"%s\",\"message\":%s,\"version\":%s,\"current\":\"" APP_VERSION "\",\"notes\":%s,\"done\":%llu,\"size\":%llu}",updater_supported()?"true":"false",app.update.busy?"true":"false",app.update.available?"true":"false",app.update.ready?"true":"false",app.update.install_sent?"true":"false",app.update.task,app.update.phase,update_message,update_version,notes,(unsigned long long)app.update.done,(unsigned long long)app.update.manifest.size);
  unlock(&app.mu);
  uint64_t available=0;char free_json[32]="null",storage_path[3200];int known=!free_bytes(app.root,&available);
  if(known)snprintf(free_json,sizeof(free_json),"%llu",(unsigned long long)available);
