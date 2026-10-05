@@ -26,14 +26,35 @@ def main():
     p.add_argument('--host',action='store_true')
     p.add_argument('--shadps4',action='store_true',help='Emulator-only socket ABI compatibility; PKG installation disabled')
     p.add_argument('--runtime',action='store_true',help='PS4 bootstrap and signed executable updates; never replace the running PKG')
+    p.add_argument('--pkg-installer-test',action='store_true',help='Isolated experimental PKG handoff to a separately installed helper')
+    p.add_argument('--pkg-installer-version',help='Version for an isolated candidate build; requires --pkg-installer-build')
+    p.add_argument('--pkg-installer-build',type=int,help='Build/SFO for an isolated candidate build')
     p.add_argument('--sdk',default=os.getenv('OO_PS4_TOOLCHAIN'))
     p.add_argument('--llvm',default=os.getenv('LLVM_BIN'))
     p.add_argument('--zig',default=os.getenv('ZIG_EXE','zig'))
     a=p.parse_args();embed()
     if a.host and a.shadps4:p.error('--host and --shadps4 are separate targets')
     if a.runtime and (a.host or a.shadps4):p.error('--runtime requires a real PS4 target')
-    build=ROOT/('build-shadps4' if a.shadps4 else 'build');build.mkdir(exist_ok=True)
-    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
+    if a.pkg_installer_test and (a.host or a.shadps4 or a.runtime):p.error('--pkg-installer-test requires a separate real PS4 target')
+    if (a.pkg_installer_version or a.pkg_installer_build) and (not a.pkg_installer_test or not a.pkg_installer_version or not a.pkg_installer_build):p.error('Candidate version/build require --pkg-installer-test and both values')
+    build=ROOT/('build-pkg-install-test' if a.pkg_installer_test else 'build-shadps4' if a.shadps4 else 'build');build.mkdir(exist_ok=True)
+    extra=[]
+    if a.pkg_installer_test:
+        # Never edit or repackage the published version. The opt-in build has
+        # its own newer version and output directory, outside the release feed.
+        parts=list(map(int,VERSION['APP_VERSION'].split('.')));parts[-1]+=1
+        VERSION['APP_VERSION']='.'.join(map(str,parts))
+        number=int(re.search(r'^#define APP_BUILD (\d+)',(ROOT/'src/version.h').read_text(),re.M).group(1))+1
+        if a.pkg_installer_version:
+            if not re.fullmatch(r'\d+\.\d+\.\d+',a.pkg_installer_version) or a.pkg_installer_build<number or tuple(map(int,a.pkg_installer_version.split('.')))<tuple(parts):p.error('Candidate must be newer than the published source')
+            VERSION['APP_VERSION']=a.pkg_installer_version;number=a.pkg_installer_build
+        if number>99:p.error('Choose the next SFO version explicitly before build 100')
+        build=ROOT/('build-pkg-install-test-'+VERSION['APP_VERSION']);build.mkdir(exist_ok=True)
+        VERSION['APP_SFO_VERSION']='00.%02d'%number
+        config=build/'installer-test-version.h'
+        config.write_text('#define H1PNOISE_VERSION_H\n#define APP_BUILD '+str(number)+'\n'+''.join('#define '+k+' "'+v+'"\n' for k,v in VERSION.items()))
+        extra=['-DHARBOR_PKG_INSTALLER_TEST','-include',config]
+    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
     if a.host:
         os.environ.setdefault('ZIG_GLOBAL_CACHE_DIR',str(build/'zig-global'))
         os.environ.setdefault('ZIG_LOCAL_CACHE_DIR',str(build/'zig-local'))
@@ -48,10 +69,11 @@ def main():
     if not a.shadps4:
         sources.extend([ROOT/'src/ps4_user.c',ROOT/'src/ps4_bgft.c',ROOT/'src/installer_access.c',ROOT/'src/vendor/libjbc/jailbreak.c',ROOT/'src/vendor/libjbc/kernelrw.c'])
     if a.runtime:sources.append(ROOT/'src/runtime_update.c')
+    if a.pkg_installer_test:sources.append(ROOT/'src/pkg_update_handoff.c')
     for source in sources:
         obj=build/(source.stem+'.o');objects.append(obj)
         defines=['-D__ORBIS__']+(['-DHARBOR_SHADPS4'] if a.shadps4 else [])+(['-DHARBOR_RUNTIME_UPDATES'] if a.runtime else [])
-        run([llvm/'clang.exe','--target=x86_64-pc-freebsd12-elf',*defines,'-O2','-fPIC','-funwind-tables','-Wall','-Wextra','-Wno-misleading-indentation','-isysroot',sdk,'-isystem',sdk/'include','-c',source,'-o',obj])
+        run([llvm/'clang.exe','--target=x86_64-pc-freebsd12-elf',*defines,*extra,'-O2','-fPIC','-funwind-tables','-Wall','-Wextra','-Wno-misleading-indentation','-isysroot',sdk,'-isystem',sdk/'include','-c',source,'-o',obj])
     elf=build/'harbor.elf'
     run([llvm/'ld.lld.exe','-m','elf_x86_64','-pie','--script',sdk/'link.x','--eh-frame-hdr','-L'+str(sdk/'lib'),*objects,sdk/'lib/crt1.o','-lc','-lkernel','-lSceNet','-lSceNetCtl','-lSceSysmodule','-lSceRandom','-lSceVideoOut','-lSceBgft','-lSceAppInstUtil','-lSceSystemService','-lSceHttp','-lSceSsl','-lSceUserService',*(['-lScePad'] if a.runtime else []),'-o',elf])
     pkg=build/'package';(pkg/'sce_sys/about').mkdir(parents=True,exist_ok=True);(pkg/'sce_module').mkdir(exist_ok=True)
@@ -82,8 +104,9 @@ def main():
     if a.runtime:files+=' h1pNoise.self'
     run([tools/'create-gp4.exe','-out','pkg.gp4','--content-id='+content,'--files',files],cwd=pkg)
     run([tool,'pkg_build','pkg.gp4','.'],cwd=pkg)
-    output='h1pNoise-'+VERSION['APP_VERSION']+('-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')
+    output='h1pNoise-'+VERSION['APP_VERSION']+('-install-test.pkg' if a.pkg_installer_test else '-shadPS4-test.pkg' if a.shadps4 else '-experimental.pkg')
     artifact=next(pkg.glob('*.pkg'));shutil.copy2(artifact,build/output)
     print('Built',build/output)
+    if a.pkg_installer_test:run([os.sys.executable,ROOT/'tools/build_pkg_updater.py','--sdk',sdk,'--llvm',llvm,'--out',build/'updater-helper'])
 
 if __name__=='__main__':main()

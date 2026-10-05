@@ -1,5 +1,6 @@
 #include "app.h"
 #include "updater.h"
+#include "pkg_update.h"
 #ifdef HARBOR_RUNTIME_UPDATES
 #include "runtime_update.h"
 extern int32_t sceSystemServiceLoadExec(const char *,const char **);
@@ -9,7 +10,9 @@ extern int32_t sceSystemServiceLoadExec(const char *,const char **);
 #endif
 int update_platform_install(const char *path,int *task,char *error,size_t cap){
  *task=-1;
-#ifdef HARBOR_RUNTIME_UPDATES
+#if defined(HARBOR_PKG_INSTALLER_TEST)
+ return pkg_update_handoff(path,error,cap);
+#elif defined(HARBOR_RUNTIME_UPDATES)
  lock(&app.mu);uint32_t build=app.update.manifest.build;unlock(&app.mu);
  char expected[700];runtime_path(build,"self",expected);
  if(strcmp(path,expected)){snprintf(error,cap,"Destino da atualizacao invalido.");return -1;}

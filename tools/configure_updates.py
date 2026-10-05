@@ -17,6 +17,8 @@ def main():
  text='#ifndef H1PNOISE_UPDATE_CONFIG_H\n#define H1PNOISE_UPDATE_CONFIG_H\n'
  text+='#ifdef HARBOR_RUNTIME_UPDATES\n'
  text+=f'#define UPDATE_FEED_URL "https://raw.githubusercontent.com/{a.repo}/main/releases/runtime/current.h1p"\n'
+ text+='#elif defined(HARBOR_PKG_INSTALLER_TEST)\n'
+ text+=f'#define UPDATE_FEED_URL "https://raw.githubusercontent.com/{a.repo}/main/releases/pkg-install-test/current.h1p"\n'
  text+='#else\n'
  text+=f'#define UPDATE_FEED_URL "https://raw.githubusercontent.com/{a.repo}/main/releases/manual-v1/current.h1p"\n'
  text+='#endif\n'

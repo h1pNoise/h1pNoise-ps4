@@ -6,6 +6,8 @@
 #include "magnet.h"
 #ifdef HARBOR_RUNTIME_UPDATES
 #define UPDATE_MODE "runtime"
+#elif defined(HARBOR_PKG_INSTALLER_TEST)
+#define UPDATE_MODE "installer-test"
 #else
 #define UPDATE_MODE "manual"
 #endif

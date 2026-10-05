@@ -2,6 +2,7 @@
 #include "updater.h"
 #include "update_config.h"
 #include "version.h"
+#include "pkg_update.h"
 #include "vendor/monocypher-ed25519.h"
 #ifdef HARBOR_RUNTIME_UPDATES
 #include "runtime_update.h"
@@ -17,17 +18,6 @@ static void path_for(uint32_t build,char out[700]){
 #else
  snprintf(out,700,"%s/h1pNoise-update-%u.pkg",app.root,build);
 #endif
-}
-static int verify_file(const char *path,const UpdateManifest *m,char *error,size_t cap){
- FILE *f=fopen(path,"rb");if(!f){snprintf(error,cap,"A atualizacao descarregada ja nao esta disponivel.");return -1;}
- unsigned char buffer[32768],digest[64];crypto_sha512_ctx hash;crypto_sha512_init(&hash);uint64_t total=0;size_t n;
- while((n=fread(buffer,1,sizeof(buffer),f))){if(n>m->size-total){fclose(f);snprintf(error,cap,"O tamanho da atualizacao mudou.");return -1;}total+=n;crypto_sha512_update(&hash,buffer,n);}
- int io_error=ferror(f);crypto_sha512_final(&hash,digest);
- if(io_error||total!=m->size||crypto_verify64(digest,m->sha512)){fclose(f);snprintf(error,cap,"O ficheiro da atualizacao nao corresponde a versao assinada.");return -1;}
- /* The PKG header/SFO live in the bounded metadata area, before the PFS. */
- unsigned char *meta=malloc(512*1024);if(!meta){fclose(f);snprintf(error,cap,"Sem memoria para verificar a atualizacao.");return -1;}
- rewind(f);n=fread(meta,1,512*1024,f);int bad=ferror(f)||update_pkg_metadata(meta,n,total,m);free(meta);fclose(f);
- if(bad){snprintf(error,cap,"O pacote nao corresponde a identidade e versao da h1pNoise.");return -1;}return 0;
 }
 int updater_supported(void){
 #if defined(__ORBIS__) && !defined(HARBOR_SHADPS4)
@@ -46,6 +36,8 @@ static void *worker(void *arg){
   char msg[180];
 #ifdef HARBOR_RUNTIME_UPDATES
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Carrega X no comando para atualizar.",m.version);
+#elif defined(HARBOR_PKG_INSTALLER_TEST)
+  snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. No telemovel, escolhe Descarregar e instalar (teste). Requer h1pNoise Updater.",m.version);
 #else
   snprintf(msg,sizeof(msg),"h1pNoise %s disponivel. Descarrega o PKG e instala manualmente com a app fechada.",m.version);
 #endif
@@ -63,7 +55,7 @@ static void *worker(void *arg){
    crypto_sha512_init(&d.hash);int net=update_http_get(m.url,m.size,file_sink,&d,error,sizeof(error));int io=fflush(d.file);if(fclose(d.file))io=-1;
    unsigned char digest[64];crypto_sha512_final(&d.hash,digest);
    if(net||io||d.done!=m.size||crypto_verify64(digest,m.sha512)){remove(part);if(!*error)snprintf(error,sizeof(error),"Download incompleto ou corrompido. A versao instalada nao foi alterada.");goto done;}
-   if(verify_file(part,&m,error,sizeof(error))){remove(part);goto done;}
+   if(update_file_verify(part,&m,error,sizeof(error))){remove(part);goto done;}
    /* Only our deterministic update file can be replaced; never torrent content. */
 #ifdef _WIN32
    remove(path);
@@ -76,11 +68,14 @@ static void *worker(void *arg){
       PKG and the previous working executable are never removed. */
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");update_notify("h1pNoise: a abrir a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
+#elif defined(HARBOR_PKG_INSTALLER_TEST)
+   status("installing","PKG verificado. A entregar a instalacao ao h1pNoise Updater...");
+   int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));
 #else
    char msg[960];snprintf(msg,sizeof(msg),"Atualizacao descarregada e verificada em %s. Fecha a h1pNoise e instala pelo Package Installer do GoldHEN, com Enable Background Installation desligado.",path);status("ready",msg);rc=0;
 #endif
   }else{
-   if(verify_file(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
+   if(update_file_verify(path,&m,error,sizeof(error))){lock(&app.mu);app.update.ready=0;unlock(&app.mu);goto done;}
    int task=-1;rc=update_platform_install(path,&task,error,sizeof(error));lock(&app.mu);app.update.task=task;unlock(&app.mu);
    if(!rc){status("queued","Atualizacao verificada. A app vai reiniciar com a nova versao.");sleep_ms(2000);rc=update_platform_restart(error,sizeof(error));}
   }
