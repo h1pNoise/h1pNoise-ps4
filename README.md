@@ -1,3 +1,10 @@
+<img width="1891" height="899" alt="Captura de ecrã 2026-10-06 211809" src="https://github.com/user-attachments/assets/e4683b8f-83e9-4e46-90a7-61325069773b" />
+<img width="1842" height="879" alt="Captura de ecrã 2026-10-06 211815" src="https://github.com/user-attachments/assets/d5c4277a-0e6d-482c-801c-fc0fb5dff194" />
+<img width="1855" height="881" alt="Captura de ecrã 2026-10-06 211823" src="https://github.com/user-attachments/assets/fd71aa14-c3d8-4131-b630-5b6ada304648" />
+
+
+
+
 # h1pNoise — PS4
 
 Central de transferências para PS4 com GoldHEN. Envia torrents, magnets ou links diretos PKG pela interface web no telemóvel ou computador, e acompanha o progresso na consola.
