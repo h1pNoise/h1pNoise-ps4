@@ -42,6 +42,9 @@ static void wrap(int x,int y,const char *s,int font,uint32_t color,int limit,int
  }
 }
 static const char *phase(const char *p){
+ if(!strcmp(p,"rd-account"))return "Real-Debrid: conta";
+ if(!strcmp(p,"rd-upload"))return "Real-Debrid: a enviar";
+ if(!strcmp(p,"rd-waiting"))return "Real-Debrid: a preparar";
  if(!strcmp(p,"metadata"))return "A obter dados do magnet";
  if(!strcmp(p,"downloading"))return "A descarregar";if(!strcmp(p,"paused"))return "Em pausa";if(!strcmp(p,"waiting")||!strcmp(p,"trackers"))return "A procurar fontes";
  if(!strcmp(p,"checking"))return "A verificar";if(!strcmp(p,"installing"))return "A instalar";if(!strcmp(p,"downloaded"))return "Download concluído";if(!strcmp(p,"installed"))return "Instalado";if(!strcmp(p,"error"))return "Requer atenção";return "Pronto para começar";

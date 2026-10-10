@@ -1,5 +1,6 @@
 #include "app.h"
 #include "magnet.h"
+#include "real_debrid.h"
 #include <stdarg.h>
 App app;
 typedef struct{char ip[16];int port;} Peer;
@@ -25,7 +26,7 @@ static int save_torrent(const unsigned char *p,size_t n,char *error,size_t cap){
  char dir[600],path[700];snprintf(dir,sizeof(dir),"%s/%s",app.root,t->hashhex);make_dir(dir);snprintf(path,sizeof(path),"%s/source.torrent",dir);
  FILE *f=fopen(path,"wb");if(!f){snprintf(error,cap,"Nao foi possivel guardar o torrent no disco.");free(complete);torrent_free(t);free(t);return -1;}
  size_t wr=fwrite(p,1,n,f);int closed=fclose(f);if(wr!=n||closed){snprintf(error,cap,"Erro a guardar o torrent.");free(complete);torrent_free(t);free(t);return -1;}
- lock(&app.mu);torrent_free(&app.torrent);free(app.complete);app.complete=complete;app.torrent=*t;app.loaded=1;app.magnet_pending=0;app.done=0;app.pause=0;app.install_done=app.install_total=0;strcpy(app.dir,dir);unlock(&app.mu);free(t);
+ lock(&app.mu);torrent_free(&app.torrent);free(app.complete);app.complete=complete;app.torrent=*t;app.loaded=1;app.rd_magnet=0;app.magnet_pending=0;app.done=0;app.pause=0;app.install_done=app.install_total=0;strcpy(app.dir,dir);unlock(&app.mu);free(t);
  snprintf(path,sizeof(path),"%s/current.txt",app.root);f=fopen(path,"wb");if(f){fputs(app.torrent.hashhex,f);fclose(f);}
  set_status("ready","Torrent recebido. Pronto para verificar e descarregar.");return 0;
 }
@@ -112,7 +113,7 @@ static void *peer_worker(void *arg){
  release_piece(active);lock(&app.mu);app.peers--;unlock(&app.mu);free(have);free(piece);free(msg);sockclose(s);return NULL;
 }
 static void install_progress(uint64_t n,uint64_t total){lock(&app.mu);app.install_done=n;app.install_total=total;unlock(&app.mu);}
-static int install_all(void){
+int torrent_install_all(void){
  /* Read package flags, never infer package order only from filenames. */
  int order[MAX_FILES],patch[MAX_FILES];char paths[MAX_FILES][700];
  for(int i=0;i<app.torrent.nfiles;i++){
@@ -127,7 +128,7 @@ static int install_all(void){
  }
  set_status("installed","Instalacao concluida. Os PKG foram mantidos no disco.");return 0;
 }
-static void finished(void){lock(&app.mu);app.busy=0;unlock(&app.mu);}
+static void finished(void){lock(&app.mu);app.busy=0;app.rd_active=0;unlock(&app.mu);}
 /* BEP 10 uses our local ID for incoming messages and the peer's ID for requests. */
 static int metadata_peer(const Peer *peer,unsigned char **info,size_t *size,time_t deadline){
  Sock s=tcp_connect(peer->ip,peer->port,6);if(s==BADSOCK)return -1;int rc=-1;
@@ -176,10 +177,11 @@ static void *magnet_worker(void *unused){
  free(info);free(metainfo);finished();return NULL;
 }
 int begin_magnet(const char *url,size_t n,char *error,size_t cap){
- Magnet *m=calloc(1,sizeof(*m));if(!m){snprintf(error,cap,"Sem memoria.");return -1;}if(magnet_parse(m,url,n,error,cap)){free(m);return -1;}
+ Magnet *m=calloc(1,sizeof(*m));if(!m){snprintf(error,cap,"Sem memoria.");return -1;}lock(&app.mu);int rd=app.rd_enabled;unlock(&app.mu);if((rd?magnet_parse_service(m,url,n,error,cap):magnet_parse(m,url,n,error,cap))){free(m);return -1;}
  lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);free(m);snprintf(error,cap,"Pausa a tarefa atual antes de enviar outro magnet.");return -1;}
- torrent_free(&app.torrent);free(app.complete);app.complete=NULL;app.torrent=m->torrent;app.loaded=0;app.magnet_pending=1;app.busy=1;app.pause=0;app.done=0;app.peers=0;app.install_done=app.install_total=0;app.direct_phase[0]=0;app.direct_message[0]=0;snprintf(app.phase,sizeof(app.phase),"metadata");snprintf(app.message,sizeof(app.message),"A procurar os dados do magnet. Mantem a app aberta.");unlock(&app.mu);free(m);
- Thread t;if(thread_start(&t,magnet_worker,NULL)){set_status("error","Nao foi possivel iniciar a procura do magnet.");finished();snprintf(error,cap,"Nao foi possivel iniciar a procura do magnet.");return -1;}
+ if(rd&&rd_magnet_parse(url,n,error,cap)){unlock(&app.mu);free(m);return -1;}
+ app.rd_magnet=rd;app.rd_active=rd;torrent_free(&app.torrent);free(app.complete);app.complete=NULL;app.torrent=m->torrent;app.loaded=0;app.magnet_pending=1;app.busy=1;app.pause=0;app.done=0;app.peers=0;app.install_done=app.install_total=0;app.direct_phase[0]=0;app.direct_message[0]=0;snprintf(app.phase,sizeof(app.phase),"metadata");snprintf(app.message,sizeof(app.message),"A procurar os dados do magnet. Mantem a app aberta.");unlock(&app.mu);free(m);
+ if(rd)rd_trace("magnet-thread",0,0);Thread t;if(thread_start(&t,rd?rd_prepare_magnet:magnet_worker,NULL)){set_status("error","Nao foi possivel iniciar a procura do magnet.");finished();snprintf(error,cap,"Nao foi possivel iniciar a procura do magnet.");return -1;}
 #ifdef _WIN32
  CloseHandle(t);
 #else
@@ -202,12 +204,13 @@ static void *download_worker(void *unused){
   if(!paused()&&!is_complete()){set_status("waiting","A aguardar peers com blocos disponiveis. Nova tentativa dentro de 60 segundos.");for(int i=0;i<60&&!paused();i++)sleep_ms(1000);}
  }
  if(paused()){lock(&app.mu);int error=!strcmp(app.phase,"error");unlock(&app.mu);if(!error)set_status("paused","Download em pausa. Os blocos verificados ficam guardados.");}
- else if(app.auto_install)install_all();else set_status("downloaded","Download completo e verificado. Podes iniciar a instalacao.");finished();return NULL;
+ else if(app.auto_install)torrent_install_all();else set_status("downloaded","Download completo e verificado. Podes iniciar a instalacao.");finished();return NULL;
 }
 int begin_download(int install,char *error,size_t cap){
- lock(&app.mu);if(!app.loaded||app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Importa um torrent ou aguarda pela operacao atual.");return -1;}
- app.busy=1;app.pause=0;app.auto_install=install;unlock(&app.mu);Thread t;
- if(thread_start(&t,download_worker,NULL)){finished();snprintf(error,cap,"Nao foi possivel iniciar o download.");return -1;}
+ lock(&app.mu);if((!app.loaded&&!(app.rd_magnet&&app.magnet_pending&&app.rd_enabled))||app.busy||app.direct_busy||app.update.busy||app.update.task>=0){unlock(&app.mu);snprintf(error,cap,"Importa um torrent ou aguarda pela operacao atual.");return -1;}
+ if(app.rd_magnet&&!app.rd_enabled){unlock(&app.mu);snprintf(error,cap,"Ativa o Real-Debrid para descarregar este magnet, ou envia novamente o magnet para usar peers.");return -1;}
+ app.busy=1;app.pause=0;app.auto_install=install;app.rd_active=app.rd_enabled;int rd=app.rd_enabled;unlock(&app.mu);Thread t;
+ if(thread_start(&t,rd?rd_download_worker:download_worker,NULL)){finished();snprintf(error,cap,"Nao foi possivel iniciar o download.");return -1;}
 #ifdef _WIN32
  CloseHandle(t);
 #else
@@ -215,7 +218,7 @@ int begin_download(int install,char *error,size_t cap){
 #endif
  return 0;
 }
-static void *install_worker(void *unused){(void)unused;install_all();finished();return NULL;}
+static void *install_worker(void *unused){(void)unused;torrent_install_all();finished();return NULL;}
 int begin_install(char *error,size_t cap){
  lock(&app.mu);if(!app.loaded||app.busy||app.direct_busy||app.update.busy||app.update.task>=0||app.done!=app.torrent.total){unlock(&app.mu);snprintf(error,cap,"O download tem de estar completo e verificado. Aguarda qualquer verificacao de link.");return -1;}app.busy=1;unlock(&app.mu);Thread t;
  if(thread_start(&t,install_worker,NULL)){finished();return -1;}
@@ -225,4 +228,14 @@ int begin_install(char *error,size_t cap){
  pthread_detach(t);
 #endif
  return 0;
+}
+
+int torrent_verify_download(char *error,size_t cap){
+ unsigned char *buf=malloc(app.torrent.piece_size);if(!buf){snprintf(error,cap,"Sem memoria para verificar os PKG.");return -1;}
+ for(uint32_t i=0;i<app.torrent.pieces;i++){
+  if(paused()){free(buf);return -1;}uint32_t n=piece_len(i);unsigned char h[20];
+  if(data_io((uint64_t)i*app.torrent.piece_size,buf,n,0)){free(buf);snprintf(error,cap,"PKG Real-Debrid incompleto. Nao foi instalado.");return -1;}
+  sha1(buf,n,h);if(memcmp(h,app.torrent.hashes+i*20,20)){free(buf);snprintf(error,cap,"Verificacao do torrent falhou. O PKG Real-Debrid nao foi instalado.");return -1;}
+ }
+ free(buf);lock(&app.mu);memset(app.complete,1,app.torrent.pieces);app.done=app.torrent.total;unlock(&app.mu);return 0;
 }

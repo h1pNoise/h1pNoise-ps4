@@ -21,7 +21,7 @@ static int direct_peer(Magnet *m,const char *s){
  unsigned port=0;if(!colon[1])return -1;for(const char *p=colon+1;*p;p++){if(*p<'0'||*p>'9'||port>6553)return -1;port=port*10+*p-'0';}if(!port||port>65535)return -1;
  Torrent *t=&m->torrent;if(t->nsources==MAX_SOURCES)return -1;memcpy(t->sources[t->nsources].host,s,colon-s);t->sources[t->nsources].host[colon-s]=0;t->sources[t->nsources++].port=port;return 0;
 }
-int magnet_parse(Magnet *m,const char *url,size_t n,char *error,size_t cap){
+static int parse(Magnet *m,const char *url,size_t n,char *error,size_t cap,int service){
  const char *why="Magnet invalido. Usa magnet:?xt=urn:btih:...";int found=0;memset(m,0,sizeof(*m));
  if(n<9||n>=MAGNET_CAP||memcmp(url,"magnet:?",8)||memchr(url,0,n)||memchr(url,'#',n))goto bad;
  for(size_t pos=8;pos<n;){size_t end=pos;while(end<n&&url[end]!='&')end++;const char *eq=memchr(url+pos,'=',end-pos);if(!eq)goto bad;
@@ -33,10 +33,12 @@ int magnet_parse(Magnet *m,const char *url,size_t n,char *error,size_t cap){
   pos=end+1;
  }
  if(!found){why="Este magnet precisa de um hash BitTorrent v1 (urn:btih). Magnets apenas v2 ainda nao sao suportados.";goto bad;}
- if(!m->torrent.ntrackers&&!m->torrent.nsources){why="O magnet nao tem tracker HTTP/UDP nem fonte direta. Esta versao nao usa DHT; envia o .torrent ou um magnet com trackers.";goto bad;}
+ if(!service&&!m->torrent.ntrackers&&!m->torrent.nsources){why="O magnet nao tem tracker HTTP/UDP nem fonte direta. Esta versao nao usa DHT; envia o .torrent ou um magnet com trackers.";goto bad;}
  for(int i=0;i<20;i++)sprintf(m->torrent.hashhex+i*2,"%02x",m->torrent.hash[i]);if(!m->torrent.name[0])strcpy(m->torrent.name,"Magnet: a obter dados do torrent");return 0;
 bad:snprintf(error,cap,"%s",why);return -1;
 }
+int magnet_parse(Magnet *m,const char *url,size_t n,char *error,size_t cap){return parse(m,url,n,error,cap,0);}
+int magnet_parse_service(Magnet *m,const char *url,size_t n,char *error,size_t cap){return parse(m,url,n,error,cap,1);}
 /* Reconstruct the metainfo without changing a single byte of the signed-by-hash info dictionary. */
 int magnet_torrent(const Torrent *m,const unsigned char *info,size_t n,unsigned char **out,size_t *size,char *error,size_t cap){
  unsigned char hash[20];*out=NULL;*size=0;if(!n||n>MAGNET_METADATA_MAX)goto bad;sha1(info,n,hash);if(memcmp(hash,m->hash,20)){snprintf(error,cap,"Os dados recebidos nao correspondem ao hash do magnet.");return -1;}

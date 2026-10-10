@@ -5,6 +5,7 @@
 #include "version.h"
 #include "magnet.h"
 #include "appearance.h"
+#include "real_debrid.h"
 #define UPDATE_MODE "manual"
 #if defined(__ORBIS__) || defined(HARBOR_SHADPS4)
 #define STORAGE_UNCHECKED "true"
@@ -40,6 +41,12 @@ static void status_response(Sock s){
  n+=snprintf(out+n,160000-n,",\"updatePath\":%s",update_path);
  char cleanup_message[3200];jsonstr(cleanup_message,sizeof(cleanup_message),app.update.cleanup_message);n+=snprintf(out+n,160000-n,",\"updateCleanupMessage\":%s",cleanup_message);
  n+=snprintf(out+n,160000-n,",\"accent\":\"#%06x\"",(unsigned)app.accent);
+#if defined(HARBOR_SHADPS4)
+ const char *rd_supported="false";
+#else
+ const char *rd_supported="true";
+#endif
+ n+=snprintf(out+n,160000-n,",\"realDebrid\":{\"enabled\":%s,\"configured\":%s,\"magnet\":%s,\"active\":%s,\"supported\":%s}",app.rd_enabled?"true":"false",app.rd_configured?"true":"false",app.rd_magnet?"true":"false",app.rd_active?"true":"false",rd_supported);
  unlock(&app.mu);
  n+=snprintf(out+n,160000-n,",\"updateDestinations\":[{\"id\":\"internal\",\"available\":true},{\"id\":\"usb0\",\"available\":%s},{\"id\":\"usb1\",\"available\":%s}]",update_destination_available(1)?"true":"false",update_destination_available(2)?"true":"false");
  uint64_t available=0;char free_json[32]="null",storage_path[3200];int known=!free_bytes(app.root,&available);
@@ -73,7 +80,14 @@ static void handle(Sock s){
  if(header(head,"Transfer-Encoding",encoding,sizeof(encoding))!=0){fail(s,400,"Transfer-Encoding nao suportado.");return;}
  size_t bytes=0;int lc=header(head,"Content-Length",length,sizeof(length));if(lc<0){fail(s,400,"Tamanho invalido.");return;}if(lc){if(!length[0]){fail(s,400,"Tamanho invalido.");return;}for(char *p=length;*p;p++){if(*p<'0'||*p>'9'||bytes>MAX_TORRENT/10){fail(s,413,"Ficheiro demasiado grande.");return;}bytes=bytes*10+*p-'0';}if(bytes>MAX_TORRENT){fail(s,413,"O torrent deve ter ate 8 MB.");return;}}
  char error[512]="Operacao indisponivel.";int rc=0;
- if(!strcmp(path,"/api/accent")){
+ if(!strcmp(path,"/api/real-debrid")){
+  if(bytes>=RD_TOKEN_CAP){fail(s,400,"API Real-Debrid demasiado longa.");return;}
+  char api_token[RD_TOKEN_CAP]={0};if(bytes&&recv_all(s,api_token,bytes))return;
+  rc=rd_configure(api_token,bytes,error,sizeof(error));memset(api_token,0,sizeof(api_token));
+ }else if(!strcmp(path,"/api/real-debrid/enable")||!strcmp(path,"/api/real-debrid/disable")||!strcmp(path,"/api/real-debrid/forget")){
+  if(bytes){fail(s,400,"Este pedido nao aceita conteudo.");return;}
+  rc=!strcmp(path,"/api/real-debrid/forget")?rd_forget(error,sizeof(error)):rd_enable(!strcmp(path,"/api/real-debrid/enable"),error,sizeof(error));
+ }else if(!strcmp(path,"/api/accent")){
   char color[7];uint32_t value;if(bytes!=7){fail(s,400,"Cor invalida. Usa # e seis caracteres hexadecimais.");return;}
   if(recv_all(s,color,sizeof(color)))return;
   if(accent_parse(color,sizeof(color),&value)){fail(s,400,"Cor invalida.");return;}
@@ -101,7 +115,7 @@ static void handle(Sock s){
   else if(!strcmp(path,"/api/download-install"))rc=begin_download(1,error,sizeof(error));
   else if(!strcmp(path,"/api/install"))rc=begin_install(error,sizeof(error));
   else if(!strcmp(path,"/api/pause")){lock(&app.mu);if(!strcmp(app.phase,"installing")){rc=-1;snprintf(error,sizeof(error),"A instalacao ja esta em curso. Aguarda a conclusao.");}else app.pause=1;unlock(&app.mu);}
-  else if(!strcmp(path,"/api/reset")){lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){rc=-1;snprintf(error,sizeof(error),"Pausa primeiro a tarefa atual.");}else{app.pause=1;app.busy=0;app.loaded=0;app.magnet_pending=0;app.done=0;app.install_done=app.install_total=0;app.message[0]=0;app.phase[0]=0;}unlock(&app.mu);}
+  else if(!strcmp(path,"/api/reset")){lock(&app.mu);if(app.busy||app.direct_busy||app.update.busy||app.update.task>=0){rc=-1;snprintf(error,sizeof(error),"Pausa primeiro a tarefa atual.");}else{app.pause=1;app.busy=0;app.loaded=0;app.rd_magnet=0;app.magnet_pending=0;app.done=0;app.install_done=app.install_total=0;app.message[0]=0;app.phase[0]=0;}unlock(&app.mu);}
   else{fail(s,404,"Pedido desconhecido.");return;}
  }
  if(rc)fail(s,400,error);else reply(s,200,"application/json","{\"ok\":true}",11);
