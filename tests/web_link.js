@@ -11,7 +11,7 @@ function node(id=''){
  };
 }
 const nodes=Object.fromEntries(ids.map(id=>[id,node(id)]));
-const state={loaded:false,busy:false,directSupported:true,directBusy:false,directTask:-1,directPhase:'idle',directMessage:'',phase:'idle',name:'',total:0,done:0,peers:0,message:'Envia um torrent.',free:null,files:[],storagePath:'/data/pkg'};
+const state={loaded:false,busy:false,directSupported:true,directBusy:false,directTask:-1,directPhase:'idle',directMessage:'',realDebrid:{supported:true,enabled:false,active:false},phase:'idle',name:'',total:0,done:0,peers:0,message:'Envia um torrent.',free:null,files:[],storagePath:'/data/pkg'};
 let networkError=false,lastPost=null,postHold=null,authStatus=0,requests=0;
 const ctx=vm.createContext({
  document:{getElementById:id=>{assert.ok(nodes[id],id);return nodes[id];},createElement:()=>node(),body:node(),documentElement:{style:{setProperty(){}}}},localStorage:{getItem(){return null;},setItem(){}},
@@ -20,7 +20,7 @@ const ctx=vm.createContext({
  fetch:async(url,options)=>{
   requests++;if(authStatus)return {ok:false,status:authStatus,json:async()=>({error:'Codigo recusado'})};
   if(networkError)throw Error('Sem rede');
-  if(options.method==='POST'){lastPost={url,options};if(postHold)await postHold;if(url==='/api/reset')Object.assign(state,{loaded:false,busy:false,total:0,done:0,phase:'idle'});return {ok:true,json:async()=>({ok:true})};}
+  if(options.method==='POST'){lastPost={url,options};if(url==='/api/real-debrid')Object.assign(state.realDebrid,{enabled:!!options.body,configured:!!options.body});if(url==='/api/real-debrid/disable')state.realDebrid.enabled=false;if(url==='/api/real-debrid/enable')state.realDebrid.enabled=state.realDebrid.configured;if(url==='/api/real-debrid/forget')Object.assign(state.realDebrid,{enabled:false,configured:false});if(postHold)await postHold;if(url==='/api/reset')Object.assign(state,{loaded:false,busy:false,total:0,done:0,phase:'idle'});return {ok:true,json:async()=>({ok:true})};}
   if(url==='/api/qr')return {ok:true,json:async()=>({size:21,modules:'0'.repeat(441)})};
   return {ok:true,json:async()=>({...state})};
  }
@@ -79,6 +79,25 @@ const setURL=async value=>{nodes['pkg-url'].value=value;await fire('pkg-url','in
  lastPost=null;await nodes['update-install'].click();await nodes['update-confirm-install'].click();assert.equal(lastPost,null);assert.equal(nodes['update-confirm'].hidden,true);
  state.update.mode='manual';await ctx.refresh();lastPost=null;await nodes['update-install'].click();assert.equal(lastPost,null);assert.equal(nodes['update-install'].hidden,true);
  state.update.task=42;state.update.phase='queued';await ctx.refresh();for(const id of ['update-check','update-install','send-link','upload','reset'])assert.equal(nodes[id].disabled,true,id);
+ // RD preference cannot silently fall back to peers while waiting for an API.
+ Object.assign(state,{loaded:true,busy:false,done:0,total:256,phase:'ready'});Object.assign(state.update,{task:-1,busy:false});await ctx.refresh();
+ await nodes['tab-real-debrid'].click();assert.equal(nodes['panel-real-debrid'].hidden,false);nodes['rd-toggle'].checked=true;await fire('rd-toggle','change');assert.equal(nodes['rd-settings'].hidden,false);assert.equal(nodes.start.disabled,true);assert.equal(nodes.download.disabled,true);
+ nodes['rd-token'].value='short';await fire('rd-token','input');lastPost=null;await nodes['rd-save'].click();assert.equal(lastPost,null);assert.match(nodes['rd-error'].textContent,/API/);
+ const secret='test_API_1234567890123456';nodes['rd-token'].value=secret;await fire('rd-token','input');await nodes['rd-save'].click();assert.equal(lastPost.url,'/api/real-debrid');assert.equal(lastPost.options.body,secret);assert.equal(nodes['rd-token'].value,'');assert.equal(nodes.start.disabled,false);assert.match(nodes.start.textContent,/Real-Debrid/);
+ await nodes.start.click();assert.equal(lastPost.url,'/api/download-install');await nodes.download.click();assert.equal(lastPost.url,'/api/download');
+ state.busy=true;await ctx.refresh();assert.equal(nodes['rd-toggle'].disabled,true);assert.equal(nodes['rd-save'].disabled,true);state.busy=false;await ctx.refresh();
+ nodes['rd-toggle'].checked=false;await fire('rd-toggle','change');assert.equal(lastPost.url,'/api/real-debrid/disable');assert.equal(lastPost.options.body,undefined);assert.equal(state.realDebrid.enabled,false);assert.equal(state.realDebrid.configured,true);assert.equal(nodes['rd-settings'].hidden,false);
+ await ctx.refresh();assert.equal(nodes['rd-token'].value,'');nodes['rd-toggle'].checked=true;await fire('rd-toggle','change');assert.equal(lastPost.url,'/api/real-debrid/enable');assert.equal(state.realDebrid.enabled,true);assert.match(nodes['magnet-help'].textContent,/diretamente/);
+ nodes['magnet-url'].value=magnet;await fire('magnet-url','input');await nodes['send-magnet'].click();assert.equal(lastPost.url,'/api/magnet');
+ Object.assign(state,{loaded:false,magnetPending:true,phase:'paused'});state.realDebrid.magnet=true;await ctx.refresh();assert.equal(nodes.start.hidden,false);assert.equal(nodes.start.disabled,false);Object.assign(state,{loaded:true,magnetPending:false,phase:'ready'});state.realDebrid.magnet=false;
+ await nodes['rd-forget'].click();assert.equal(lastPost.url,'/api/real-debrid/forget');assert.equal(state.realDebrid.configured,false);assert.equal(nodes['rd-settings'].hidden,true);assert.equal(nodes['rd-token'].value,'');
+ for(const name of ['torrent','magnet','link']){await nodes['tab-'+name].click();assert.equal(nodes['panel-real-debrid'].hidden,true);}
+ await fire('tab-torrent','keydown',{key:'End',preventDefault(){}});assert.equal(focused,'tab-real-debrid');assert.equal(nodes['panel-real-debrid'].hidden,false);
+ await ctx.refresh();assert.equal(nodes['panel-real-debrid'].hidden,false);assert.equal(nodes['tab-real-debrid'].attributes['aria-selected'],'true');
+ await fire('tab-real-debrid','keydown',{key:'ArrowRight',preventDefault(){}});assert.equal(focused,'tab-torrent');assert.equal(nodes['panel-real-debrid'].hidden,true);
+ await fire('tab-torrent','keydown',{key:'ArrowLeft',preventDefault(){}});assert.equal(focused,'tab-real-debrid');assert.equal(nodes['panel-real-debrid'].hidden,false);
+ assert.ok(html.includes('id="panel-real-debrid" role="tabpanel" aria-labelledby="tab-real-debrid" hidden'));
+ assert.ok(html.includes('href="http://real-debrid.com/?id=11070717"'));assert.ok(html.includes('>Criar conta Real-Debrid</a>'));assert.ok(!script.includes("localStorage.setItem('rd"));
  for(const status of [401,429]){authStatus=status;nodes.code.value='0123';await nodes.connect.click();const before=requests;await ctx.refresh();await ctx.refresh();assert.equal(requests,before,'authentication errors must stop automatic retries');authStatus=0;}
  console.log('UI checks passed, including stopped automatic retries after 401/429.');
 })().catch(e=>{console.error(e);process.exitCode=1;});
