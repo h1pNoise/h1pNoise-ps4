@@ -60,9 +60,10 @@ function closeAccent(){$('accent-picker').open=false;$('accent-toggle').focus();
 $('accent-close').onclick=closeAccent;
 $('accent-picker').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();closeAccent();}};
 let code='',connected=false,polling=false,pending='',selectedFile=null,lastStatus=null,previous=null,toastTimer=0,filesKey='',qrCode='',editingCode=false;
+let rdEditing=false;
 let choosingUpdateDestination=false,choosingUpdateCleanup=false;
 let qrOpen=!matchMedia('(max-width: 680px)').matches;
-const phases={idle:'Sem atividade',ready:'Pronto',metadata:'A obter dados do magnet',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
+const phases={'rd-account':'Real-Debrid · Conta','rd-upload':'Real-Debrid · A enviar','rd-waiting':'Real-Debrid · A preparar',idle:'Sem atividade',ready:'Pronto',metadata:'A obter dados do magnet',checking:'A verificar',trackers:'A procurar fontes',waiting:'À espera de fontes',downloading:'A descarregar',paused:'Em pausa',downloaded:'Download concluído',installing:'A instalar',installed:'Instalado',error:'Requer atenção'};
 const size=n=>n>=1e9?(n/1e9).toFixed(2)+' GB':n>=1e6?(n/1e6).toFixed(1)+' MB':n>=1e3?(n/1e3).toFixed(1)+' kB':Math.max(0,n)+' B';
 const duration=s=>s>=3600?Math.ceil(s/3600)+' h':s>=60?Math.ceil(s/60)+' min':Math.max(1,Math.ceil(s))+' s';
 function text(id,s){if($(id).textContent!==s)$(id).textContent=s;}
@@ -77,20 +78,25 @@ async function api(path,body,post=false){
   if(!r.ok){const error=Error(d.error||'Não foi possível concluir o pedido.');error.status=r.status;if(r.status===401||r.status===429)code='';throw error;}return d;
  }catch(e){if(e.name==='AbortError')throw Error('A consola demorou a responder. Confirma o estado antes de repetir o pedido.');throw e;}finally{clearTimeout(timer);}
 }
+const transferTabs=['torrent','magnet','link','real-debrid'];
 function selectMode(mode,focus=false){
- for(const name of ['torrent','magnet','link']){const active=name===mode;$('tab-'+name).setAttribute('aria-selected',String(active));$('tab-'+name).tabIndex=active?0:-1;$('panel-'+name).hidden=!active;}
+ for(const name of transferTabs){const active=name===mode;$('tab-'+name).setAttribute('aria-selected',String(active));$('tab-'+name).tabIndex=active?0:-1;$('panel-'+name).hidden=!active;}
  if(focus)$('tab-'+mode).focus();
 }
-for(const name of ['torrent','magnet','link']){
+for(const name of transferTabs){
  $('tab-'+name).onclick=()=>selectMode(name);
- $('tab-'+name).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const modes=['torrent','magnet','link'],index=modes.indexOf(name);selectMode(e.key==='Home'?modes[0]:e.key==='End'?modes[2]:modes[(index+(e.key==='ArrowRight'?1:2))%3],true);}};
+ $('tab-'+name).onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const modes=transferTabs,index=modes.indexOf(name);selectMode(e.key==='Home'?modes[0]:e.key==='End'?modes[modes.length-1]:modes[(index+(e.key==='ArrowRight'?1:modes.length-1))%modes.length],true);}};
 }
 function controls(){
  const d=lastStatus||{},u=d.update||{},blocked=!connected||d.busy||d.directBusy||u.busy||u.task>=0||!!pending;
+ $('rd-toggle').disabled=blocked||!d.realDebrid?.supported;
+ $('rd-save').disabled=blocked||!$('rd-token').value.trim()||!d.realDebrid?.supported;
+ $('rd-token').disabled=blocked;
+ $('rd-forget').disabled=blocked||!d.realDebrid?.configured;
  $('upload').disabled=blocked||!selectedFile;$('reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
- $('send-magnet').disabled=blocked||!$('magnet-url').value.trim();
+ $('send-magnet').disabled=blocked||!$('magnet-url').value.trim()||($('rd-toggle').checked&&!d.realDebrid?.enabled);
  $('send-link').disabled=blocked||!d.directSupported||!$('pkg-url').value.trim();
- $('start').disabled=$('download').disabled=blocked||!d.loaded;
+ $('start').disabled=$('download').disabled=blocked||(!d.loaded&&!(d.realDebrid?.magnet&&d.magnetPending&&d.phase==='paused'))||($('rd-toggle').checked&&!d.realDebrid?.enabled)||(!!d.realDebrid?.magnet&&!d.realDebrid?.enabled);
  $('pause').disabled=!connected||!!pending||!d.busy||d.phase==='installing';
  $('install').disabled=blocked||!d.loaded||d.done!==d.total||d.phase==='installed';
  $('confirm-reset').disabled=blocked||(!d.loaded&&!d.magnetPending);
@@ -129,7 +135,12 @@ async function showQR(){
  }catch(e){text('pair-status',e.message);toast(e.message);}
 }
 function render(d){
- lastStatus=d;connected=true;text('connection',d.directSupported?'PS4 ligada':'Modo de teste');badge('connection-badge','online');
+ lastStatus=d;connected=true;
+ if(!rdEditing)$('rd-toggle').checked=!!d.realDebrid?.enabled;
+ $('rd-settings').hidden=!$('rd-toggle').checked&&!lastStatus?.realDebrid?.configured;
+ $('rd-token').placeholder=d.realDebrid?.configured?'API guardada; cola outra para substituir':'Cola a tua API';
+ text('magnet-help',d.realDebrid?.enabled?'O magnet é enviado diretamente ao Real-Debrid, sem procurar peers. Depois escolhes descarregar ou descarregar e instalar os PKG. Mantém a app aberta.':'Cola a ligação completa. Primeiro obtemos os dados do torrent; depois escolhes descarregar ou descarregar e instalar. Sem Real-Debrid, precisa de trackers HTTP/UDP ou de uma fonte direta; sem DHT nesta versão.');
+ text('rd-status',d.realDebrid?.enabled?'Ativo e guardado na consola. Torrents e magnets usam o Real-Debrid.':d.realDebrid?.configured?'Desativado. A API está guardada; podes voltar a ativar.':'Introduz a API para ativar.');text('connection',d.directSupported?'PS4 ligada':'Modo de teste');badge('connection-badge','online');
  $('pair-form').hidden=!editingCode;
  $('pairing').classList.toggle('connected',!editingCode);$('connection-bottom').hidden=false;
  const hasTransfer=!!d.loaded||!!d.magnetPending;
@@ -150,9 +161,9 @@ function render(d){
  const key=JSON.stringify(d.files||[]);
  if(filesKey!==key){filesKey=key;$('files').replaceChildren();for(const f of d.files||[]){const li=document.createElement('li'),name=document.createElement('b'),bytes=document.createElement('span');name.textContent=f.name;bytes.textContent=size(f.size);li.append(name,bytes);$('files').append(li);}}
  const complete=d.loaded&&d.total>0&&d.done===d.total;
- $('start').hidden=$('download').hidden=d.busy||complete||!!d.magnetPending;$('pause').hidden=!d.busy||installing;
+ $('start').hidden=$('download').hidden=d.busy||complete||(!!d.magnetPending&&!(d.realDebrid?.magnet&&d.phase==='paused'));$('pause').hidden=!d.busy||installing;
  $('install').hidden=!complete||d.busy||d.phase==='installed';
- text('start',d.phase==='paused'?'Retomar e instalar':'Descarregar e instalar');text('download',d.phase==='paused'?'Só retomar':'Só descarregar');
+ text('start',d.phase==='paused'?'Retomar e instalar':d.realDebrid?.enabled?'Descarregar e instalar · Real-Debrid':'Descarregar e instalar');text('download',d.phase==='paused'?'Só retomar':'Só descarregar');
  if(d.magnetPending)text('pause','Cancelar procura');else text('pause','Pausar');
  const unknown=d.free===null||d.free===undefined;text('space-value',unknown?'Indisponível':size(d.free));$('space-value').classList.toggle('unknown',unknown);
  text('space',unknown?(d.allowUnknownSpace?'Medição indisponível. Podes descarregar; confirma o espaço no dispositivo.':'Não foi possível medir o espaço disponível.'):'A instalação precisa de espaço adicional ao download.');
@@ -215,6 +226,22 @@ async function action(path,body,errorId='alert'){
  try{await api(path,body,true);return true;}catch(e){text(errorId,e.message);return false;}
  finally{pending='';await refresh();controls();}
 }
+$('rd-token').oninput=()=>controls();
+$('rd-toggle').onchange=async()=>{
+ rdEditing=true;$('rd-settings').hidden=!$('rd-toggle').checked&&!lastStatus?.realDebrid?.configured;text('rd-error','');controls();
+ if($('rd-toggle').checked&&!lastStatus?.realDebrid?.configured){$('rd-token').focus();return;}
+ await action($('rd-toggle').checked?'real-debrid/enable':'real-debrid/disable',null,'rd-error');
+ rdEditing=false;await refresh();
+};
+$('rd-save').onclick=async()=>{
+ if($('rd-save').disabled)return;const token=$('rd-token').value.trim();
+ if(!/^[a-zA-Z0-9_.-]{16,256}$/.test(token)){text('rd-error','Cola apenas a API completa da tua conta Real-Debrid.');return;}
+ if(await action('real-debrid',token,'rd-error')){$('rd-token').value='';rdEditing=false;await refresh();toast('Real-Debrid e API guardados na consola.');}
+};
+$('rd-forget').onclick=async()=>{
+ if($('rd-forget').disabled)return;
+ if(await action('real-debrid/forget',null,'rd-error')){$('rd-token').value='';rdEditing=false;await refresh();toast('API Real-Debrid esquecida.');}
+};
 $('upload').onclick=async()=>{
  if(!selectedFile||!connected||$('upload').disabled)return;
  if(await action('torrent',selectedFile,'upload-error')){toast('Torrent recebido. Pronto para começar.');$('transfer').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
@@ -224,7 +251,7 @@ $('send-magnet').onclick=async()=>{
  const url=$('magnet-url').value.trim();
  if(!url.startsWith('magnet:?')){text('magnet-error','Cola uma ligação que comece por magnet:?');return;}
  if(new TextEncoder().encode(url).length>=32768){text('magnet-error','O magnet é demasiado longo.');return;}
- if(await action('magnet',url,'magnet-error')){toast('Magnet recebido. A procurar os dados do torrent.');$('transfer').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
+ if(await action('magnet',url,'magnet-error')){toast(lastStatus?.realDebrid?.enabled?'Magnet enviado diretamente ao Real-Debrid.':'Magnet recebido. A procurar os dados do torrent.');$('transfer').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest'});}
 };
 $('send-link').onclick=async()=>{
  if($('send-link').disabled||!connected)return;
