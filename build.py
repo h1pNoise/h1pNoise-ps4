@@ -33,13 +33,13 @@ def main():
     a=p.parse_args();embed()
     if a.host and a.shadps4:p.error('--host and --shadps4 are separate targets')
     build=ROOT/('build-shadps4' if a.shadps4 else 'build');build.mkdir(exist_ok=True)
-    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','appearance.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_destination.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
+    sources=[ROOT/'src'/x for x in ['core.c','magnet.c','appearance.c','platform.c','storage.c','pkg_validation.c','remote_pkg.c','engine.c','real_debrid.c','rd_http.c','rd_json.c','server.c','main.c','pairing.c','vendor/qrcodegen.c','updater.c','update_destination.c','update_http.c','update_platform.c','update_manifest.c','update_file.c','vendor/monocypher.c','vendor/monocypher-ed25519.c']]
     if a.host:
         os.environ.setdefault('ZIG_GLOBAL_CACHE_DIR',str(build/'zig-global'))
         os.environ.setdefault('ZIG_LOCAL_CACHE_DIR',str(build/'zig-local'))
         compiler=a.zig if Path(a.zig).exists() else os.getenv('CLANG_EXE','clang')
         command=[compiler]+(['cc'] if Path(compiler).stem=='zig' else [])
-        run([*command,'-O1','-g','-Wall','-Wextra','-Wno-misleading-indentation','-o',build/'harbor-host.exe',*sources,'-lws2_32','-lbcrypt'])
+        run([*command,'-O1','-g','-Wall','-Wextra','-Wno-misleading-indentation','-o',build/'harbor-host.exe',*sources,'-lws2_32','-lbcrypt','-lwinhttp'])
         return
     if not a.sdk or not a.llvm: p.error('Set --sdk and --llvm (or OO_PS4_TOOLCHAIN and LLVM_BIN).')
     sdk=Path(a.sdk).resolve();llvm=Path(a.llvm).resolve()
